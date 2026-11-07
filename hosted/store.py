@@ -243,8 +243,17 @@ class PostgresStore(Store):
         elif self._db: self._db.close()
 
 
+def dsn_from_env(env=os.environ):
+    """VERIFY_DATABASE_URL, or VERIFY_DB_HOST/_NAME/_USER/_PASSWORD[/_PORT/_SSLMODE] (how ECS injects RDS secrets)."""
+    if env.get("VERIFY_DB_HOST"):
+        from psycopg.conninfo import make_conninfo
+        return make_conninfo(host=env["VERIFY_DB_HOST"], port=env.get("VERIFY_DB_PORT", "5432"), dbname=env.get("VERIFY_DB_NAME", "verify"),
+                             user=env["VERIFY_DB_USER"], password=env["VERIFY_DB_PASSWORD"], sslmode=env.get("VERIFY_DB_SSLMODE", "require"))
+    return env.get("VERIFY_DATABASE_URL", "")
+
 def open_store():
-    url = os.environ.get("VERIFY_DATABASE_URL", "")
-    return PostgresStore(url) if url.startswith("postgres") else Store(url.removeprefix("sqlite:///") or "hosted.db")
+    url = dsn_from_env()
+    return PostgresStore(url) if url.startswith("postgres") or os.environ.get("VERIFY_DB_HOST") else \
+        Store(url.removeprefix("sqlite:///") or "hosted.db")
 
 def _now(): return datetime.now(timezone.utc).isoformat()

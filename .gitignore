@@ -7,3 +7,6 @@
 __pycache__/
 build/
 demo_out/
+.terraform/
+*.tfstate*
+*.tfvars

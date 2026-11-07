@@ -143,6 +143,16 @@ class Hosted(unittest.TestCase):
         chain = self.call("GET", "/v1/verify-chain")[1]
         self.assertEqual((chain["ok"], chain["events"]), (True, wins))
 
+    def test_dsn_from_env_parts(self):
+        from hosted.store import dsn_from_env
+        self.assertEqual(dsn_from_env({"VERIFY_DATABASE_URL": "postgres://x"}), "postgres://x")
+        try: import psycopg  # noqa: F401
+        except ImportError: self.skipTest("psycopg not installed")
+        d = dsn_from_env({"VERIFY_DB_HOST": "h", "VERIFY_DB_USER": "u", "VERIFY_DB_PASSWORD": "p w'x"})
+        for part in ("host=h", "dbname=verify", "user=u", "sslmode=require", "port=5432"): self.assertIn(part, d)
+        import psycopg.conninfo
+        self.assertEqual(psycopg.conninfo.conninfo_to_dict(d)["password"], "p w'x")   # quoting survives
+
     def test_cli_push(self):
         from verify import local
         from verify.cli import main

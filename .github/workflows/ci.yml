@@ -39,6 +39,17 @@ jobs:
       - name: Postgres, single connection
         run: PYTHONPATH=src:. python -m unittest hosted.test_hosted -v
         env: {VERIFY_TEST_PG_DSN: "host=localhost port=5432 user=postgres password=ci dbname=postgres", VERIFY_DB_POOL: "1"}
+  terraform:
+    runs-on: ubuntu-latest
+    defaults: {run: {working-directory: hosted/deploy}}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: hashicorp/setup-terraform@v3
+        with: {terraform_version: "1.5.7"}
+      - run: terraform fmt -check -recursive
+      - run: terraform init -backend=false -input=false
+      - run: terraform validate
   test:
     # Only trusted repository code may use the shared AWS runner.
     if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association))

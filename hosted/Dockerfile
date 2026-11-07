@@ -1,6 +1,6 @@
 # Build from verify/:  docker build -f hosted/Dockerfile -t verify-hosted .
 FROM python:3.12-slim
-RUN pip install --no-cache-dir "psycopg[binary]==3.2.3" && useradd -r -u 10001 app
+RUN pip install --no-cache-dir "psycopg[binary]==3.2.3" "psycopg_pool==3.3.3" && useradd -r -u 10001 app
 WORKDIR /app
 COPY src/ /app/src/
 COPY hosted/ /app/hosted/

@@ -35,7 +35,7 @@ class Hosted(unittest.TestCase):
         threading.Thread(target=self.srv.serve_forever, daemon=True).start()
         self.base = f"http://127.0.0.1:{self.srv.server_address[1]}"
 
-    def tearDown(self): self.srv.shutdown(); self.srv.server_close()
+    def tearDown(self): self.srv.shutdown(); self.srv.server_close(); self.store.close()
 
     def call(self, method, path, body=None, key="key-acme", raw=False):
         h = {"Content-Type": "application/json"}
@@ -129,6 +129,19 @@ class Hosted(unittest.TestCase):
                          ["fail", "not_observed", "pass"])
         run = self.call("GET", f"/v1/runs/{run_ids[0]}")[1]
         self.assertTrue(run["events"] and run["verdict"])
+
+    def test_concurrent_writers_keep_one_chain(self):
+        """Parallel posts racing for the same head: exactly one wins each round, the chain never forks."""
+        import concurrent.futures as cf
+        wins = 0
+        for rnd in range(5):
+            head = self.call("GET", "/v1/verify-chain")[1]["head"]
+            with cf.ThreadPoolExecutor(6) as ex:
+                codes = list(ex.map(lambda i: self.post([ev(f"r{rnd}-{i}", "a", {"i": i}, head)])[0], range(6)))
+            self.assertEqual(codes.count(201), 1, codes); wins += 1
+            self.assertTrue(set(codes) <= {201, 409}, codes)
+        chain = self.call("GET", "/v1/verify-chain")[1]
+        self.assertEqual((chain["ok"], chain["events"]), (True, wins))
 
     def test_cli_push(self):
         from verify import local

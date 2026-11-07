@@ -32,9 +32,13 @@ jobs:
         with: {persist-credentials: false}
       - uses: actions/setup-python@v5
         with: {python-version: "3.12"}
-      - run: pip install "psycopg[binary]"
-      - run: PYTHONPATH=src:. python -m unittest hosted.test_hosted -v
-        env: {VERIFY_TEST_PG_DSN: "host=localhost port=5432 user=postgres password=ci dbname=postgres"}
+      - run: pip install "psycopg[binary]" psycopg_pool
+      - name: Postgres, pooled
+        run: PYTHONPATH=src:. python -m unittest hosted.test_hosted -v
+        env: {VERIFY_TEST_PG_DSN: "host=localhost port=5432 user=postgres password=ci dbname=postgres", VERIFY_DB_POOL: "10"}
+      - name: Postgres, single connection
+        run: PYTHONPATH=src:. python -m unittest hosted.test_hosted -v
+        env: {VERIFY_TEST_PG_DSN: "host=localhost port=5432 user=postgres password=ci dbname=postgres", VERIFY_DB_POOL: "1"}
   test:
     # Only trusted repository code may use the shared AWS runner.
     if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association))

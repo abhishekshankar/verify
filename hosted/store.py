@@ -42,6 +42,15 @@ CREATE TRIGGER IF NOT EXISTS event_payload_delete_needs_tombstone BEFORE DELETE 
   BEGIN SELECT RAISE(ABORT, 'payload delete requires tombstone'); END;
 """
 
+class _Rows:
+    """Buffered result so a pooled connection can go back to the pool before the caller reads rows."""
+    def __init__(self, cur):
+        self.rows, self.rowcount = (cur.fetchall() if cur.description else []), cur.rowcount
+    def fetchone(self): return self.rows[0] if self.rows else None
+    def fetchall(self): return self.rows
+    def __iter__(self): return iter(self.rows)
+
+
 class Store:
     """SQLite driver. Postgres subclass only changes connect/placeholder/locking."""
     ph = "?"
@@ -50,11 +59,14 @@ class Store:
         self.db = sqlite3.connect(path, check_same_thread=False, isolation_level=None)
         self.db.execute("PRAGMA journal_mode=WAL"); self.db.execute("PRAGMA synchronous=FULL")
         self.db.executescript(SQLITE_DDL)
-        self.lock = threading.Lock()   # ponytail: one writer per process; Postgres backend uses row locks instead
+        self.lock = threading.RLock()   # ponytail: whole connection serialised per process; Postgres pool for real load
 
     # -- plumbing --
     def q(self, sql, args=()):
-        cur = self.db.cursor(); cur.execute(sql.replace("?", self.ph), args); return cur
+        with self.lock:   # sqlite3 connections are not safe for concurrent use; reads are buffered before release
+            cur = self.db.cursor(); cur.execute(sql.replace("?", self.ph), args)
+            return _Rows(cur)
+    def close(self): self.db.close()
     def begin(self): self.lock.acquire(); self.q("BEGIN IMMEDIATE")
     def commit(self): self.q("COMMIT"); self.lock.release()
     def rollback(self): self.q("ROLLBACK"); self.lock.release()
@@ -182,20 +194,53 @@ class Store:
 
 
 class PostgresStore(Store):
-    """Same SQL with %s placeholders. Requires psycopg (v3) and hosted/schema.postgres.sql applied by a migration role."""
+    """Same SQL with %s placeholders. Requires psycopg (v3) and hosted/schema.postgres.sql applied by a migration role.
+    With psycopg_pool installed, each transaction takes its own pooled connection and tenants serialise on a row lock
+    (SELECT ... FOR UPDATE), so different tenants write in parallel. Without it: one connection behind a process lock."""
     ph = "%s"
 
-    def __init__(self, dsn):
+    def __init__(self, dsn, pool_size=None):
         try: import psycopg
         except ImportError as e: raise RuntimeError("PostgresStore needs `pip install psycopg[binary]`") from e
-        self.db = psycopg.connect(dsn, autocommit=True)
-        enc = self.db.execute("SHOW server_encoding").fetchone()[0]
+        try: from psycopg_pool import ConnectionPool
+        except ImportError: ConnectionPool = None
+        size = pool_size if pool_size is not None else int(os.environ.get("VERIFY_DB_POOL", "10"))
+        self.pool = ConnectionPool(dsn, min_size=1, max_size=size, kwargs={"autocommit": True}, open=True) \
+            if ConnectionPool and size > 1 else None
+        self.local = threading.local()
+        self.lock = threading.Lock()
+        self._db = None if self.pool else psycopg.connect(dsn, autocommit=True)
+        enc = self.q("SHOW server_encoding").fetchone()[0]
         if enc.upper() not in ("UTF8", "UTF-8"):   # SQL_ASCII makes psycopg return bytes and breaks tenant matching
             raise RuntimeError(f"database encoding is {enc}; create it with ENCODING 'UTF8'")
-        self.lock = threading.Lock()   # ponytail: one connection per process; use a pool (psycopg_pool) for real load
 
+    @property
+    def db(self):
+        """Connection for the current transaction, or a thread-held one for ad-hoc admin/test use."""
+        if not self.pool: return self._db
+        c = getattr(self.local, "conn", None)
+        if c is None: c = self.local.conn = self.pool.getconn()
+        return c
+
+    def q(self, sql, args=()):
+        sql = sql.replace("?", self.ph)
+        if self.pool and getattr(self.local, "conn", None) is None:
+            with self.pool.connection() as c: return _Rows(c.execute(sql, args))
+        return _Rows(self.db.execute(sql, args))
+
+    def begin(self):
+        if not self.pool: self.lock.acquire()
+        self.db.execute("BEGIN")
+    def _end(self, sql):
+        self.db.execute(sql)
+        if self.pool: self.pool.putconn(self.local.conn); self.local.conn = None
+        else: self.lock.release()
+    def commit(self): self._end("COMMIT")
+    def rollback(self): self._end("ROLLBACK")
     def lock_tenant(self, tenant): self.q("SELECT 1 FROM tenant WHERE id=? FOR UPDATE", (tenant,))
-    def begin(self): self.lock.acquire(); self.q("BEGIN")
+    def close(self):
+        if self.pool: self.pool.close()
+        elif self._db: self._db.close()
 
 
 def open_store():

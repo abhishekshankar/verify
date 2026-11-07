@@ -1,0 +1,37 @@
+{
+  "id": "conversation.closed_with_reply.intercom",
+  "version": "1.0.0",
+  "owner": "support",
+  "target_system": "intercom",
+  "subject_ref": "conversation:{conversation}",
+  "subject_present": "conversation.exists",
+  "preconditions": [],
+  "postconditions": [
+    {
+      "path": "conversation.state",
+      "op": "eq",
+      "value": "closed"
+    },
+    {
+      "path": "conversation.admin_replies",
+      "op": "gt",
+      "value": 0
+    }
+  ],
+  "forbidden": [
+    {
+      "path": "conversation.snoozed",
+      "op": "eq",
+      "value": true
+    }
+  ],
+  "required_level": "L2",
+  "settle_window_s": 1.0,
+  "max_attempts": 3,
+  "scope": [
+    "conversation.exists",
+    "conversation.state",
+    "conversation.admin_replies",
+    "conversation.snoozed"
+  ]
+}

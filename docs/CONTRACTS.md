@@ -7,7 +7,7 @@ A contract says what "done" means **before** the action runs. Verify rejects a b
 |---|---|---|
 | `id`, `version` | yes | Stable name and semver. A changed contract gets a new version; the ledger stores the exact body and its hash. |
 | `owner` | yes | Team accountable for the outcome. |
-| `target_system` | yes | `stripe`, `zendesk`, `hubspot`, or your own name when you pass your own reader. |
+| `target_system` | yes | `stripe`, `zendesk`, `hubspot`, `intercom`, `shopify`, or your own name when you pass your own reader. |
 | `subject_ref` | yes | Template for the record being checked, filled from the claim: `refund:{refund_id}`. |
 | `subject_present` | no | Field that is truthy only when the record exists. Missing → `not_observed`. Default `refund.amount`. |
 | `preconditions` | no | Checks that must hold for the action to make sense. Any false → `inapplicable`. |
@@ -37,8 +37,10 @@ A readback that can't happen raises `Blocked` → `blocked`, retried with backof
 - Refund: `contracts/refund.full.stripe.json`. Charge succeeded; refund succeeded for the claimed amount; never two refunds.
 - Ticket solved: `contracts/ticket.solved.with_reply.zendesk.json`. Status solved and at least one public agent reply; not auto-closed.
 - Deal closed: `contracts/deal.closed_won.hubspot.json`. Stage `closedwon`, claimed amount, linked to the claimed company.
+- Conversation closed: `contracts/conversation.closed_with_reply.intercom.json`. State `closed`, at least one admin or bot comment; not snoozed.
+- Shopify refund: `contracts/refund.issued.shopify.json`. Claimed refund on the order, transactions sum to the claimed amount, all `REFUND`/`SUCCESS`; never more than one refund on the order.
 
-Start one with `verify init stripe|zendesk|hubspot`.
+Start one with `verify init stripe|zendesk|hubspot|intercom|shopify`.
 
 ## Mistakes `validate` catches
 - A check path not listed in `scope`

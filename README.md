@@ -48,7 +48,7 @@ STRIPE_AGENT_KEY=sk_test_... STRIPE_VERIFY_KEY=rk_test_... verify demo stripe
 ZENDESK_SUBDOMAIN=... ZENDESK_AGENT_OAUTH=... ZENDESK_VERIFY_TOKEN=... verify demo zendesk
 ```
 `STRIPE_VERIFY_KEY` should be a restricted key with Charges and Refunds set to Read.
-`ZENDESK_VERIFY_TOKEN` should be an OAuth token with scope `read`. `HUBSPOT_VERIFY_TOKEN` should be a private-app token with only `crm.objects.deals.read`. Live Stripe keys are refused.
+`ZENDESK_VERIFY_TOKEN` should be an OAuth token with scope `read`. `HUBSPOT_VERIFY_TOKEN` should be a private-app token with only `crm.objects.deals.read`. `INTERCOM_VERIFY_TOKEN` should be an Intercom app access token with only the Read conversations permission. `SHOPIFY_SHOP` (the `*.myshopify.com` subdomain) and `SHOPIFY_VERIFY_TOKEN` should come from a custom app with only `read_orders`. Live Stripe keys are refused.
 
 ## Check one real action
 Write a contract once, then check each claim the agent makes. The exit code is 0 only on `pass`, so it can gate a pipeline.
@@ -66,7 +66,7 @@ STRIPE_VERIFY_KEY=rk_test_... verify check contracts/refund.full.stripe.json cla
 ## Layout
 Python API: `verify.check(contract, claim, reader)`; see `docs/ADAPTERS.md`. Contracts: `docs/CONTRACTS.md`.
 
-`src/verify/core.py` holds evaluation, the ledger and the verify loop; `contract.py` loads and validates contracts (`contracts/*.json`). The adapters are `stripe.py`, `zendesk.py`, `hubspot.py` (deals; offline-tested, live run pending) and `local.py`.
+`src/verify/core.py` holds evaluation, the ledger and the verify loop; `contract.py` loads and validates contracts (`contracts/*.json`). The adapters are `stripe.py`, `zendesk.py`, `hubspot.py` (deals), `intercom.py` (conversations), `shopify.py` (refunds, Admin GraphQL) (the last three offline-tested, live run pending) and `local.py`.
 
 ## Status
 v0.2, pre-production. Not yet a stable API. MIT licence.

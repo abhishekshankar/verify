@@ -4,13 +4,13 @@
   verify ledger <db>
   verify ledger export <db> [out.jsonl]     hash-chained JSONL + chain head
   verify ledger verify <export.jsonl>      check an export offline
-  verify init {stripe,zendesk,hubspot} [dir]
+  verify init {stripe,zendesk,hubspot,intercom,shopify} [dir]
   verify --version
   verify demo {local,stripe,zendesk}
   verify selfcheck
 """
 import json, os, sys
-from . import contract, hubspot, local, stripe, zendesk
+from . import contract, hubspot, intercom, local, shopify, stripe, zendesk
 from . import __version__
 from .core import Ledger, verify, verify_export
 
@@ -30,7 +30,15 @@ def reader_for(c):
         tok = os.environ.get("HUBSPOT_VERIFY_TOKEN")
         if not tok: sys.exit("Set HUBSPOT_VERIFY_TOKEN (private app, crm.objects.deals.read only).")
         return hubspot.make_reader(hubspot.hs_http(tok))
-    sys.exit(f"no adapter for target_system {t!r} (have: stripe, zendesk, hubspot)")
+    if t == "intercom":
+        tok = os.environ.get("INTERCOM_VERIFY_TOKEN")
+        if not tok: sys.exit("Set INTERCOM_VERIFY_TOKEN (Intercom app access token, Read conversations permission only).")
+        return intercom.make_reader(intercom.ic_http(tok))
+    if t == "shopify":
+        shop, tok = os.environ.get("SHOPIFY_SHOP"), os.environ.get("SHOPIFY_VERIFY_TOKEN")
+        if not (shop and tok): sys.exit("Set SHOPIFY_SHOP (subdomain of .myshopify.com) and SHOPIFY_VERIFY_TOKEN (custom app Admin API token, read_orders scope only).")
+        return shopify.make_reader(shopify.sh_http(shop, tok))
+    sys.exit(f"no adapter for target_system {t!r} (have: stripe, zendesk, hubspot, intercom, shopify)")
 
 
 def check(contract_path, claim_path, ledger_path="verify.db"):
@@ -43,11 +51,13 @@ def check(contract_path, claim_path, ledger_path="verify.db"):
 
 CLAIMS = {"stripe": {"actor": "support-agent", "charge_id": "ch_...", "refund_id": "re_...", "amount": 5000},
           "zendesk": {"actor": "support-agent", "ticket": 123},
-          "hubspot": {"actor": "revops-agent", "deal": "123", "amount": 4200.0, "company": "456"}}
+          "hubspot": {"actor": "revops-agent", "deal": "123", "amount": 4200.0, "company": "456"},
+          "intercom": {"actor": "support-agent", "conversation": "123"},
+          "shopify": {"actor": "support-agent", "order": "123", "refund_id": "456", "amount": 50.0}}
 
 
 def init(system, d="."):
-    mod = {"stripe": stripe, "zendesk": zendesk, "hubspot": hubspot}[system]
+    mod = {"stripe": stripe, "zendesk": zendesk, "hubspot": hubspot, "intercom": intercom, "shopify": shopify}[system]
     os.makedirs(os.path.join(d, "contracts"), exist_ok=True)
     paths = [os.path.join(d, "contracts", mod.CONTRACT["id"] + ".json"), os.path.join(d, f"claim.{system}.json")]
     for p, body in zip(paths, (mod.CONTRACT, CLAIMS[system])):
@@ -90,7 +100,7 @@ def main(argv=None):
     if a[:2] == ["demo", "local"]: local.demo(); return 0
     if a[:2] == ["demo", "stripe"]: stripe.main(); return 0
     if a[:2] == ["demo", "zendesk"]: zendesk.main(); return 0
-    if a[:1] == ["selfcheck"]: local.check(); stripe.check(); zendesk.check(); hubspot.check(); return 0
+    if a[:1] == ["selfcheck"]: local.check(); stripe.check(); zendesk.check(); hubspot.check(); intercom.check(); shopify.check(); return 0
     print(__doc__); return 2
 
 

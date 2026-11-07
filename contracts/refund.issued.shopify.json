@@ -1,0 +1,37 @@
+{
+  "id": "refund.issued.shopify",
+  "version": "1.0.0",
+  "owner": "support",
+  "target_system": "shopify",
+  "subject_ref": "order:{order}/refund:{refund_id}",
+  "subject_present": "refund.exists",
+  "preconditions": [],
+  "postconditions": [
+    {
+      "path": "refund.amount",
+      "op": "eq",
+      "value": "{amount}"
+    },
+    {
+      "path": "refund.transactions_ok",
+      "op": "eq",
+      "value": true
+    }
+  ],
+  "forbidden": [
+    {
+      "path": "order.refund_count",
+      "op": "gt",
+      "value": 1
+    }
+  ],
+  "required_level": "L2",
+  "settle_window_s": 2.0,
+  "max_attempts": 3,
+  "scope": [
+    "refund.exists",
+    "refund.amount",
+    "refund.transactions_ok",
+    "order.refund_count"
+  ]
+}

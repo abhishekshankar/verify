@@ -18,6 +18,23 @@ jobs:
         with: {fetch-depth: 0, persist-credentials: false}
       - uses: gitleaks/gitleaks-action@v2
         env: {GITHUB_TOKEN: "${{ github.token }}"}
+  hosted-postgres:
+    # GitHub-hosted with a throwaway Postgres; no secrets, safe for a public repo.
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env: {POSTGRES_PASSWORD: ci, POSTGRES_INITDB_ARGS: "--encoding=UTF8"}
+        ports: ["5432:5432"]
+        options: --health-cmd pg_isready --health-interval 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install "psycopg[binary]"
+      - run: PYTHONPATH=src:. python -m unittest hosted.test_hosted -v
+        env: {VERIFY_TEST_PG_DSN: "host=localhost port=5432 user=postgres password=ci dbname=postgres"}
   test:
     # Only trusted repository code may use the shared AWS runner.
     if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association))

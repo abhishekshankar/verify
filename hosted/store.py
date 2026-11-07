@@ -189,6 +189,9 @@ class PostgresStore(Store):
         try: import psycopg
         except ImportError as e: raise RuntimeError("PostgresStore needs `pip install psycopg[binary]`") from e
         self.db = psycopg.connect(dsn, autocommit=True)
+        enc = self.db.execute("SHOW server_encoding").fetchone()[0]
+        if enc.upper() not in ("UTF8", "UTF-8"):   # SQL_ASCII makes psycopg return bytes and breaks tenant matching
+            raise RuntimeError(f"database encoding is {enc}; create it with ENCODING 'UTF8'")
         self.lock = threading.Lock()   # ponytail: one connection per process; use a pool (psycopg_pool) for real load
 
     def lock_tenant(self, tenant): self.q("SELECT 1 FROM tenant WHERE id=? FOR UPDATE", (tenant,))

@@ -1,4 +1,5 @@
-"""Run from verify/:  PYTHONPATH=src:. python3 -m unittest hosted.test_hosted -v"""
+"""Run from verify/:  PYTHONPATH=src:. python3 -m unittest hosted.test_hosted -v
+Against Postgres: set VERIFY_TEST_PG_DSN (a throwaway UTF8 database; its public schema is wiped per test)."""
 import contextlib, hashlib, hmac, io, json, os, sqlite3, tempfile, threading, unittest, urllib.error, urllib.request
 from datetime import datetime, timedelta, timezone
 from hosted.store import Store, chain_hash
@@ -6,6 +7,19 @@ from hosted.server import make_server
 from hosted.client import push
 
 KEY = "test-export-key"
+PG = os.environ.get("VERIFY_TEST_PG_DSN")
+
+if PG:
+    from hosted.store import PostgresStore
+    _SQL = open(os.path.join(os.path.dirname(__file__), "schema.postgres.sql")).read()
+    def Store(_path):   # noqa: F811  fresh schema per test
+        import psycopg
+        with psycopg.connect(PG, autocommit=True) as c:
+            c.execute("DROP SCHEMA public CASCADE; CREATE SCHEMA public;")
+            for r in ("verify_app", "verify_retention"):
+                c.execute(f"DO $$BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='{r}') THEN CREATE ROLE {r}; END IF; END$$;")
+            c.execute(_SQL)
+        return PostgresStore(PG)
 
 def ev(run_id, type_, payload, prev, at=None):
     e = {"run_id": run_id, "type": type_, "at": at or datetime.now(timezone.utc).isoformat(), "clock_source": "system",
@@ -47,6 +61,7 @@ class Hosted(unittest.TestCase):
                          [("GET", "/v1/verify-chain", 200), ("GET", "/v1/verdicts", 200)])
         self.assertEqual(self.call("GET", "/v1/access-log", key="key-globex")[1]["access_log"], [])   # isolated
         with self.assertRaises(Exception): self.store.q("DELETE FROM access_log")                    # append-only
+        if PG: self.store.db.rollback() if not self.store.db.autocommit else None
         self.assertTrue(self.store.rotate_key("acme", "key-acme-2"))
         self.assertEqual(self.call("GET", "/v1/verify-chain")[0], 401)
         self.assertEqual(self.call("GET", "/v1/verify-chain", key="key-acme-2")[0], 200)
@@ -74,7 +89,7 @@ class Hosted(unittest.TestCase):
         self.assertEqual(self.post([ev("r", "a", {}, "")])[0], 201)
         for sql in ("UPDATE event SET type='x'", "DELETE FROM event", "UPDATE event_payload SET payload_json='{}'",
                     "DELETE FROM event_payload"):
-            with self.assertRaises(sqlite3.DatabaseError, msg=sql): self.store.db.execute(sql)
+            with self.assertRaises(Exception, msg=sql): self.store.db.execute(sql)   # sqlite3 or psycopg error
         self.assertTrue(self.call("GET", "/v1/verify-chain")[1]["ok"])
 
     def test_export_signature(self):

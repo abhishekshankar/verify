@@ -1,4 +1,11 @@
 # Changelog
+## 0.3.0 (2026-11-07)
+- Hosted ledger: access log, key rotation, UTF8 guard; tested on Postgres in CI
+- Static landing site (site/) with a manual GitHub Pages workflow
+- Intercom conversation adapter and contract `conversation.closed_with_reply.intercom` (`INTERCOM_VERIFY_TOKEN`, pinned `Intercom-Version`)
+- Shopify refund adapter (Admin GraphQL, pinned API version) and contract `refund.issued.shopify` (`SHOPIFY_SHOP`, `SHOPIFY_VERIFY_TOKEN`, `read_orders` only)
+- `verify init intercom|shopify`; both adapters in `verify selfcheck`
+
 ## 0.2.0 (2026-11-07)
 - Python API `verify.check()`
 - `Blocked(retry_after=)` with capped exponential backoff

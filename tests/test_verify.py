@@ -1,6 +1,6 @@
 import unittest
 import glob, json, os
-from verify import contract, hubspot, local, stripe, zendesk
+from verify import contract, hubspot, intercom, local, shopify, stripe, zendesk
 from verify.cli import main
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -11,6 +11,23 @@ class TestVerify(unittest.TestCase):
     def test_stripe_adapter_offline(self): stripe.check()
     def test_zendesk_adapter_offline(self): zendesk.check()
     def test_hubspot_adapter_offline(self): hubspot.check()
+    def test_intercom_adapter_offline(self): intercom.check()   # pass/fail/not_observed/blocked + write refused
+    def test_shopify_adapter_offline(self): shopify.check()     # incl. THROTTLED, userErrors, write refused
+
+    def test_init_intercom_shopify(self):
+        import tempfile, io, contextlib
+        d = tempfile.mkdtemp()
+        with contextlib.redirect_stdout(io.StringIO()):
+            for s, m in (("intercom", intercom), ("shopify", shopify)):
+                self.assertEqual(main(["init", s, d]), 0)
+                p = os.path.join(d, "contracts", m.CONTRACT["id"] + ".json")
+                self.assertEqual(json.load(open(p)), m.CONTRACT)
+                self.assertEqual(json.load(open(os.path.join(ROOT, "contracts", m.CONTRACT["id"] + ".json"))), m.CONTRACT)
+
+    def test_shopify_throttle_retry_after(self):
+        from verify.core import Blocked
+        try: shopify.fake_shopify({"6": "429"})(shopify.QUERY, {"id": "gid://shopify/Order/6"}); self.fail()
+        except Blocked as e: self.assertAlmostEqual(e.retry_after, 0.5)
 
     def test_shipped_contracts_valid(self):
         files = glob.glob(os.path.join(ROOT, "contracts", "*.json"))

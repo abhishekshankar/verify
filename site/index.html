@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Verify checks an AI agent's claimed actions against the system of record with a read-only key. Unknown fails closed.">
+<meta property="og:title" content="Verify: your agent says done. Verify checks.">
+<meta property="og:image" content="verify-demo.gif">
+<title>Verify</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,800&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: an audit ledger. Claim column on the left, readback on the right, one stamped verdict per row. */
+:root{
+  --paper:#f3f5f7; --ink:#14202b; --muted:#56656f; --rule:#cfd7dd; --card:#ffffff;
+  --pass:#1d7a4f; --fail:#b3261e; --warn:#8a5a00; --accent:#1f4fd1;
+  --display:"Bricolage Grotesque",ui-sans-serif,system-ui,sans-serif;
+  --body:"Source Serif 4",Georgia,serif;
+  --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --paper:#0e151b; --ink:#e6edf2; --muted:#93a3ae; --rule:#26333d; --card:#141e26;
+  --pass:#4cc38a; --fail:#ff6b5e; --warn:#e2b04a; --accent:#7ea2ff; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --paper:#0e151b; --ink:#e6edf2; --muted:#93a3ae; --rule:#26333d; --card:#141e26;
+  --pass:#4cc38a; --fail:#ff6b5e; --warn:#e2b04a; --accent:#7ea2ff; color-scheme:dark}
+body{background:var(--paper);color:var(--ink);font:400 1.06rem/1.6 var(--body);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.wrap{max-width:1040px;margin:0 auto;padding-block:48px 64px;display:grid;grid-template-columns:minmax(0,1fr);gap:64px}
+.wrap>*{min-width:0}
+a{color:var(--accent)} a:focus-visible,.btn:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.eyebrow{font:600 .74rem/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+h1{font:800 clamp(2.4rem,7vw,4.6rem)/1 var(--display);letter-spacing:-.02em;margin:.3em 0 .25em;text-wrap:balance}
+h1 s{text-decoration-thickness:.08em;text-decoration-color:var(--fail);color:var(--muted)}
+h2{font:800 clamp(1.5rem,3.5vw,2.1rem)/1.1 var(--display);margin:0 0 .5em;text-wrap:balance}
+.lede{max-width:60ch;font-size:1.2rem;color:var(--muted);margin:0}
+.ctas{display:flex;flex-wrap:wrap;gap:12px;margin-top:28px}
+.btn{font:600 .95rem/1 var(--mono);padding:14px 18px;border:1.5px solid var(--ink);color:var(--ink);text-decoration:none;border-radius:2px}
+.btn.primary{background:var(--ink);color:var(--paper)}
+.ledger{border-top:2px solid var(--ink);font-family:var(--mono);font-size:.9rem}
+.row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) 9.5rem;gap:16px;padding:14px 0;border-bottom:1px solid var(--rule);align-items:start}
+.row.head{font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.row .why{color:var(--muted);font-size:.8rem;display:block;margin-top:4px}
+.stamp{justify-self:start;font-weight:600;font-size:.78rem;letter-spacing:.08em;padding:4px 8px;border:1.5px solid currentColor;border-radius:2px;transform:rotate(-2deg)}
+.pass{color:var(--pass)} .fail{color:var(--fail)} .no{color:var(--warn)}
+.total{display:flex;flex-wrap:wrap;gap:8px 32px;padding-top:14px;font-family:var(--mono);font-size:.9rem}
+.total b{font-size:1.25rem}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:32px}
+.cols p{margin:.2em 0 0;color:var(--muted)}
+.cols h3{font:600 1.05rem/1.3 var(--display);margin:0}
+table{border-collapse:collapse;width:100%;font-size:.95rem}
+td,th{text-align:left;padding:10px 12px 10px 0;border-bottom:1px solid var(--rule);vertical-align:top}
+th{font:600 .72rem/1.2 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+td code{font-family:var(--mono);font-size:.88rem}
+pre{background:var(--card);border:1px solid var(--rule);padding:16px;overflow-x:auto;font:400 .85rem/1.55 var(--mono);margin:0}
+.scroll{overflow-x:auto}
+.pilot{border:1.5px solid var(--ink);padding:28px;display:grid;gap:12px;background:var(--card)}
+.pilot ul{margin:0;padding-left:1.2em}
+footer{font:400 .8rem/1.5 var(--mono);color:var(--muted)}
+@media (max-width:640px){.row{grid-template-columns:minmax(0,1fr) 7.5rem}.row>.claim{grid-column:1/-1}.row.head>.claim{display:none}}
+</style>
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Verify · open source · MIT</div>
+    <h1>Your agent says <s>done</s>. Verify checks.</h1>
+    <p class="lede">AI agents report success from their own logs. Verify ignores the claim, reads the system of record back with a separate read-only key, and fails closed on anything it can't confirm.</p>
+    <div class="ctas">
+      <a class="btn primary" href="https://github.com/abhishekshankar/verify">Get it on GitHub</a>
+      <a class="btn" href="https://github.com/abhishekshankar/verify/issues/new?title=Pilot%20request">Request a free pilot</a>
+    </div>
+  </header>
+
+  <section aria-labelledby="run">
+    <div class="eyebrow">Real run · Stripe test mode · 7 Nov 2026</div>
+    <h2 id="run">3 refunds claimed. 1 confirmed.</h2>
+    <div class="ledger" role="table">
+      <div class="row head" role="row"><span class="claim">Agent says</span><span>Stripe says</span><span>Verdict</span></div>
+      <div class="row" role="row"><span class="claim">Refund issued ✓ ch_…mJ9evED</span><span>refund.amount = 5000</span><span class="stamp pass">PASS · L2</span></div>
+      <div class="row" role="row"><span class="claim">Refund issued ✓ ch_…pGOs3Ow</span><span>refund.amount = 2500<span class="why">expected 5000</span></span><span class="stamp fail">FAIL · L2</span></div>
+      <div class="row" role="row"><span class="claim">Refund issued ✓ ch_…aUsdOb1</span><span>no refund found<span class="why">never reached Stripe</span></span><span class="stamp no">NOT OBSERVED</span></div>
+    </div>
+    <div class="total"><span>Agent success <b>3/3</b></span><span>Verified success <b>1/3</b></span><span>Hash chain intact <b>true</b></span></div>
+  </section>
+
+  <img src="verify-demo.gif" alt="Terminal recording: agent claims 3 of 3 refunds; Verify confirms 1 of 3" width="1200" height="720" style="max-width:100%;height:auto;border:1px solid var(--rule)">
+
+  <section class="cols" aria-label="How it works">
+    <div><h3>Contract first</h3><p>Before the action runs, write what “done” means: subject, postconditions, forbidden side effects, retry window.</p></div>
+    <div><h3>Independent readback</h3><p>A read-only credential the agent doesn't hold. Writes are refused with 403, so Verify can't fix what it checks.</p></div>
+    <div><h3>Append-only evidence</h3><p>Every claim, readback and verdict goes into a SQLite ledger where each event hashes the one before.</p></div>
+  </section>
+
+  <section aria-labelledby="verdicts">
+    <h2 id="verdicts">Five verdicts. Only one counts.</h2>
+    <div class="scroll"><table>
+      <tr><th>Verdict</th><th>Meaning</th></tr>
+      <tr><td><code class="pass">pass</code></td><td>Every postcondition observed in the system of record</td></tr>
+      <tr><td><code class="fail">fail</code></td><td>A postcondition observed false, or a forbidden side effect seen</td></tr>
+      <tr><td><code>inapplicable</code></td><td>Preconditions weren't met; the action should never have run</td></tr>
+      <tr><td><code class="no">not_observed</code></td><td>The record is absent after the observe window</td></tr>
+      <tr><td><code>blocked</code></td><td>Readback impossible (auth, outage, rate limit); retried with backoff, then fails closed</td></tr>
+    </table></div>
+  </section>
+
+  <section aria-labelledby="start">
+    <h2 id="start">Gate a pipeline in one line</h2>
+    <pre>pip install verify-outcomes
+STRIPE_VERIFY_KEY=rk_test_… verify check contracts/refund.full.stripe.json claim.json
+# exit 0 only on pass</pre>
+    <p style="color:var(--muted)">Adapters for Stripe, Zendesk and HubSpot. Any other API takes a reader of about 20 lines.</p>
+  </section>
+
+  <section class="pilot" aria-labelledby="pilot">
+    <div class="eyebrow">Design partners wanted</div>
+    <h2 id="pilot" style="margin:0">Free 2-week pilot</h2>
+    <ul>
+      <li>One agent flow, one system of record</li>
+      <li>A read-only key you issue and can revoke anytime</li>
+      <li>Runs in your environment; your data stays with you</li>
+      <li>You get claimed vs. verified success, and every miss</li>
+    </ul>
+    <div><a class="btn primary" href="https://github.com/abhishekshankar/verify/issues/new?title=Pilot%20request">Request a pilot</a></div>
+  </section>
+
+  <footer>Verify v0.1 · pre-production · MIT licence · github.com/abhishekshankar/verify</footer>
+</div>
+</body>
+</html>

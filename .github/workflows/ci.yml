@@ -10,6 +10,14 @@ concurrency:
   group: verify-ci-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  secrets:
+    # Public-repo safe: GitHub-hosted, read-only, no secrets in scope.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - uses: gitleaks/gitleaks-action@v2
+        env: {GITHUB_TOKEN: "${{ github.token }}"}
   test:
     # Only trusted repository code may use the shared AWS runner.
     if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association))
@@ -23,6 +31,8 @@ jobs:
         run: python3 -c 'import sys; assert sys.version_info >= (3, 10), sys.version; print(sys.version)'
       - name: Offline tests (no Stripe/Zendesk secrets)
         run: PYTHONPATH=src python3 -m unittest discover -s tests -v
+      - name: Hosted ledger tests
+        run: PYTHONPATH=src:. python3 -m unittest hosted.test_hosted -v
       - name: Validate shipped contracts
         run: PYTHONPATH=src python3 -m verify validate contracts/*.json
       - name: CLI smoke

@@ -2,12 +2,17 @@
   verify check <contract.json> <claim.json> [--ledger verify.db]   exit 0 only on pass
   verify validate <contract.json>...
   verify ledger <db>
+  verify ledger export <db> [out.jsonl]     hash-chained JSONL + chain head
+  verify ledger verify <export.jsonl>      check an export offline
+  verify init {stripe,zendesk,hubspot} [dir]
+  verify --version
   verify demo {local,stripe,zendesk}
   verify selfcheck
 """
 import json, os, sys
 from . import contract, hubspot, local, stripe, zendesk
-from .core import Ledger, verify
+from . import __version__
+from .core import Ledger, verify, verify_export
 
 
 def reader_for(c):
@@ -36,8 +41,36 @@ def check(contract_path, claim_path, ledger_path="verify.db"):
     return 0 if v == "pass" else 1
 
 
+CLAIMS = {"stripe": {"actor": "support-agent", "charge_id": "ch_...", "refund_id": "re_...", "amount": 5000},
+          "zendesk": {"actor": "support-agent", "ticket": 123},
+          "hubspot": {"actor": "revops-agent", "deal": "123", "amount": 4200.0, "company": "456"}}
+
+
+def init(system, d="."):
+    mod = {"stripe": stripe, "zendesk": zendesk, "hubspot": hubspot}[system]
+    os.makedirs(os.path.join(d, "contracts"), exist_ok=True)
+    paths = [os.path.join(d, "contracts", mod.CONTRACT["id"] + ".json"), os.path.join(d, f"claim.{system}.json")]
+    for p, body in zip(paths, (mod.CONTRACT, CLAIMS[system])):
+        if os.path.exists(p): print(f"exists, kept: {p}"); continue
+        with open(p, "w") as f: json.dump(body, f, indent=2); f.write("\n")
+        print(f"wrote {p}")
+    print(f"next: edit {paths[1]}, then  verify check {paths[0]} {paths[1]}")
+    return 0
+
+
 def main(argv=None):
     a = sys.argv[1:] if argv is None else argv
+    if a[:1] in (["--version"], ["-V"]): print(f"verify {__version__}"); return 0
+    if a[:1] == ["init"] and len(a) in (2, 3) and a[1] in CLAIMS: return init(*a[1:])
+    if a[:2] == ["ledger", "export"] and len(a) in (3, 4):
+        out = open(a[3], "w") if len(a) == 4 else sys.stdout
+        head = Ledger(a[2]).export(out)
+        if out is not sys.stdout: out.close(); print(f"chain head {head}")
+        return 0
+    if a[:2] == ["ledger", "verify"] and len(a) == 3:
+        with open(a[2]) as f: ok, n, head = verify_export(f)
+        print(f"{n} events, chain {'intact' if ok else 'BROKEN'}" + (f", head {head}" if ok else ""))
+        return 0 if ok else 1
     if a[:1] == ["check"] and len(a) in (3, 5) and (len(a) == 3 or a[3] == "--ledger"):
         return check(a[1], a[2], *a[4:5])
     if a[:1] == ["validate"] and len(a) > 1:

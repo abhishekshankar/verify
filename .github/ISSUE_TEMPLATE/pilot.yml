@@ -1,0 +1,15 @@
+name: Pilot request
+description: Free 2-week design-partner pilot
+title: "Pilot request: "
+labels: [pilot]
+body:
+  - type: input
+    id: system
+    attributes: {label: System of record (Stripe, Zendesk, HubSpot, other)}
+    validations: {required: true}
+  - type: textarea
+    id: flow
+    attributes: {label: Which agent action should be checked?}
+  - type: input
+    id: contact
+    attributes: {label: How should we reach you? (optional; this issue is public)}

@@ -4,12 +4,25 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "verify-outcomes"
-version = "0.1.0"
+version = "0.2.0"
 description = "Independent readback verification for AI agents and automations. Unknown fails closed."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
 dependencies = []
+keywords = ["ai-agents", "verification", "audit", "stripe", "zendesk", "hubspot", "llmops"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Operating System :: OS Independent",
+  "Topic :: Software Development :: Testing",
+  "Topic :: System :: Monitoring",
+]
+
+[project.urls]
+Homepage = "https://github.com/abhishekshankar/verify"
+Issues = "https://github.com/abhishekshankar/verify/issues"
 
 [project.scripts]
 verify = "verify.cli:main"

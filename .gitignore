@@ -1,7 +1,9 @@
-demo_out/
 *.db
-*.db-wal
+*.db-*
 *.db-shm
-__pycache__/
+*.db-wal
 *.egg-info/
 .venv/
+__pycache__/
+build/
+demo_out/

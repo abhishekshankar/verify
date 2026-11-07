@@ -49,5 +49,32 @@ class TestApi(unittest.TestCase):
     assert verify.check(c, {"rid": "1", "amount": 5}, down, ledger=str(tmp_path / "l.db"))["verdict"] == "blocked"
 
 
+class TestCliExtras(unittest.TestCase):
+    def test_init_export_verify_tamper(self):
+        import tempfile, io, contextlib
+        d = tempfile.mkdtemp()
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(main(["init", "stripe", d]), 0)
+            self.assertEqual(main(["validate", os.path.join(d, "contracts", "refund.full.stripe.json")]), 0)
+            self.assertEqual(main(["--version"]), 0)
+        from verify.core import Ledger, verify as run
+        led = Ledger(os.path.join(d, "l.db"))
+        c = dict(hubspot.CONTRACT, settle_window_s=0)
+        r = hubspot.make_reader(hubspot.fake_hubspot({"1": ("closedwon", "1", ["2"])}))
+        for _ in range(2): run(led, None, {"deal": "1", "amount": 1.0, "company": "2"}, c, r)
+        exp = os.path.join(d, "e.jsonl")
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(main(["ledger", "export", os.path.join(d, "l.db"), exp]), 0)
+            self.assertEqual(main(["ledger", "verify", exp]), 0)
+        lines = open(exp).read().splitlines()
+        lines[1] = lines[1].replace("readback", "readbacK", 1)          # flip one byte
+        open(exp, "w").write("\n".join(lines) + "\n")
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(main(["ledger", "verify", exp]), 1)
+        open(exp, "w").write("\n".join(lines[:-2] + lines[-1:]) + "\n")  # drop last event: head mismatch
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(main(["ledger", "verify", exp]), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

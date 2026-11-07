@@ -32,11 +32,14 @@ Only `pass` counts as success.
 ## Quick start
 Python 3.10+, no dependencies.
 ```bash
-pip install -e .
+pip install verify-outcomes          # or: pip install git+https://github.com/abhishekshankar/verify
+verify --version
+verify init stripe                   # writes contracts/ and an example claim
 verify selfcheck        # all verdicts, duplicate refund, tamper detection, both adapters offline
 verify demo local       # SQLite stands in for Stripe + Zendesk
 verify ledger demo_out/ledger.db
 verify validate contracts/*.json   # reject bad contracts before any action runs
+verify ledger export demo_out/ledger.db audit.jsonl && verify ledger verify audit.jsonl
 ```
 
 Live adapters (test accounts only; keys come from env vars, never from code):
@@ -61,9 +64,9 @@ STRIPE_VERIFY_KEY=rk_test_... verify check contracts/refund.full.stripe.json cla
 4. **Verdict**: evaluated, then written to an append-only SQLite ledger (`synchronous=FULL`) where each event hashes the one before it.
 
 ## Layout
-Python API: `verify.check(contract, claim, reader)`; see `docs/ADAPTERS.md`.
+Python API: `verify.check(contract, claim, reader)`; see `docs/ADAPTERS.md`. Contracts: `docs/CONTRACTS.md`.
 
 `src/verify/core.py` holds evaluation, the ledger and the verify loop; `contract.py` loads and validates contracts (`contracts/*.json`). The adapters are `stripe.py`, `zendesk.py`, `hubspot.py` (deals; offline-tested, live run pending) and `local.py`.
 
 ## Status
-v0.1, a pre-production demo. Not yet a stable API. MIT licence.
+v0.2, pre-production. Not yet a stable API. MIT licence.

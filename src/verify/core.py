@@ -59,6 +59,17 @@ class Ledger:
                               (*row.values(), prev, h))
         self.db.commit(); return cur.lastrowid
 
+    EVENT_KEYS = ["run_id", "type", "at", "clock_source", "payload_json", "evidence_hash"]
+
+    def export(self, out):
+        """Write every event as JSONL, then a final line with the chain head. Returns the head hash."""
+        head = ""
+        for seq, *row, p, h in self.db.execute("SELECT seq,run_id,type,at,clock_source,payload_json,evidence_hash,prev_hash,hash FROM event ORDER BY seq"):
+            out.write(json.dumps(dict(seq=seq, **dict(zip(self.EVENT_KEYS, row)), prev_hash=p, hash=h), sort_keys=True) + "\n")
+            head = h
+        out.write(json.dumps({"chain_head": head}) + "\n")
+        return head
+
     def verify_chain(self):
         prev = ""
         for *row, p, h in self.db.execute("SELECT run_id,type,at,clock_source,payload_json,evidence_hash,prev_hash,hash FROM event ORDER BY seq"):
@@ -67,6 +78,18 @@ class Ledger:
                 return False
             prev = h
         return True
+
+def verify_export(lines):
+    """Check an exported JSONL ledger offline. Returns (ok, events, head)."""
+    prev, n, head = "", 0, None
+    for line in lines:
+        e = json.loads(line)
+        if "chain_head" in e: head = e["chain_head"]; break
+        row = {k: e[k] for k in Ledger.EVENT_KEYS}
+        if e["prev_hash"] != prev or e["hash"] != hashlib.sha256((prev + json.dumps(row, sort_keys=True)).encode()).hexdigest():
+            return False, n, None
+        prev, n = e["hash"], n + 1
+    return head == prev, n, head
 
 # ---------------- Verify ----------------
 def verify(ledger, sor_path, claim, contract, reader, actor="support-agent", independence="full"):

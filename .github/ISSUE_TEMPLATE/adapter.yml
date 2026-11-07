@@ -1,0 +1,11 @@
+name: Adapter request
+description: Ask for a reader for another system
+labels: [adapter]
+body:
+  - type: input
+    id: system
+    attributes: {label: System}
+    validations: {required: true}
+  - type: textarea
+    id: fields
+    attributes: {label: Which fields prove the action happened?}

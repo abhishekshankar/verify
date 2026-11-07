@@ -112,5 +112,23 @@ class TestClaimValidation(unittest.TestCase):
         self.assertIn("amount, company", err.getvalue())
 
 
+class TestCheckBatch(unittest.TestCase):
+    def test_batch_one_pass_exit_1(self):
+        import tempfile, io, contextlib
+        from verify.cli import check_batch
+        d = tempfile.mkdtemp(); c, cl = os.path.join(d, "c.json"), os.path.join(d, "claims.jsonl")
+        json.dump(dict(hubspot.CONTRACT, settle_window_s=0, max_attempts=1), open(c, "w"))
+        with open(cl, "w") as f:
+            for claim in ({"deal": "1", "amount": 10.0, "company": "7"}, {"deal": "2", "amount": 10.0, "company": "7"},
+                          {"deal": "9", "amount": 10.0, "company": "7"}, {"deal": "1"}):
+                f.write(json.dumps(claim) + "\n")
+        r = hubspot.make_reader(hubspot.fake_hubspot({"1": ("closedwon", "10", ["7"]), "2": ("closedwon", "5", ["7"])}))
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            self.assertEqual(check_batch(c, cl, os.path.join(d, "l.db"), reader=r), 1)
+        self.assertEqual([json.loads(l)["verdict"] for l in out.getvalue().splitlines()], ["pass", "fail", "not_observed", "bad_claim"])
+        self.assertIn("1/4 pass", err.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main()

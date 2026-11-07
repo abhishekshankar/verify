@@ -1,5 +1,6 @@
 """usage:
   verify check <contract.json> <claim.json> [--ledger verify.db]   exit 0 only on pass
+  verify check-batch <contract.json> <claims.jsonl> [--ledger verify.db]   one line per claim; exit 0 only if all pass
   verify validate <contract.json>...
   verify ledger <db>
   verify ledger export <db> [out.jsonl]     hash-chained JSONL + chain head
@@ -50,6 +51,23 @@ def check(contract_path, claim_path, ledger_path="verify.db"):
     return 0 if v == "pass" else 1
 
 
+def check_batch(contract_path, claims_path, ledger_path="verify.db", reader=None):
+    c = contract.load(contract_path)
+    led, reader = Ledger(ledger_path), reader or reader_for(c)
+    counts = {}
+    with open(claims_path) as f:
+        for n, line in enumerate(f, 1):
+            if not line.strip(): continue
+            claim = json.loads(line)
+            try: run_id, v, level, reasons = verify(led, None, claim, c, reader, actor=claim.get("actor", "unknown"))
+            except BadClaim as e: run_id, v, level, reasons = None, "bad_claim", "-", [str(e)]
+            counts[v] = counts.get(v, 0) + 1
+            print(json.dumps({"line": n, "run_id": run_id, "verdict": v, "level": level, "reasons": reasons}))
+    total = sum(counts.values())
+    print(f"# {counts.get('pass', 0)}/{total} pass  " + "  ".join(f"{k}={v}" for k, v in sorted(counts.items())), file=sys.stderr)
+    return 0 if total and counts.get("pass", 0) == total else 1
+
+
 CLAIMS = {"stripe": {"actor": "support-agent", "charge_id": "ch_...", "refund_id": "re_...", "amount": 5000},
           "zendesk": {"actor": "support-agent", "ticket": 123},
           "hubspot": {"actor": "revops-agent", "deal": "123", "amount": 4200.0, "company": "456"},
@@ -84,6 +102,8 @@ def main(argv=None):
         return 0 if ok else 1
     if a[:1] == ["check"] and len(a) in (3, 5) and (len(a) == 3 or a[3] == "--ledger"):
         return check(a[1], a[2], *a[4:5])
+    if a[:1] == ["check-batch"] and len(a) in (3, 5) and (len(a) == 3 or a[3] == "--ledger"):
+        return check_batch(a[1], a[2], *a[4:5])
     if a[:1] == ["validate"] and len(a) > 1:
         bad = 0
         for p in a[1:]:

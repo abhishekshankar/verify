@@ -1,0 +1,31 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: verify-ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  test:
+    # Only trusted repository code may use the shared AWS runner.
+    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association))
+    runs-on: [self-hosted, Linux, X64, aws, verify]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Python version
+        run: python3 -c 'import sys; assert sys.version_info >= (3, 10), sys.version; print(sys.version)'
+      - name: Offline tests (no Stripe/Zendesk secrets)
+        run: PYTHONPATH=src python3 -m unittest discover -s tests -v
+      - name: CLI smoke
+        run: |
+          cd "$RUNNER_TEMP"
+          PYTHONPATH="$GITHUB_WORKSPACE/src" python3 -m verify demo local
+          PYTHONPATH="$GITHUB_WORKSPACE/src" python3 -m verify ledger demo_out/ledger.db
+          echo 'Offline tests and CLI smoke passed on the shared AWS runner.' >> "$GITHUB_STEP_SUMMARY"

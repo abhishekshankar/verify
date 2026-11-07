@@ -92,7 +92,23 @@ def verify_export(lines):
     return head == prev, n, head
 
 # ---------------- Verify ----------------
+def claim_fields(contract):
+    """Claim keys the contract needs: {placeholders} in subject_ref and in check values."""
+    import string
+    need = {f for _, f, _, _ in string.Formatter().parse(contract["subject_ref"]) if f}
+    for g in ("preconditions", "postconditions", "forbidden"):
+        for c in contract.get(g, []):
+            v = c.get("value")
+            if isinstance(v, str) and v.startswith("{") and v.endswith("}"): need.add(v[1:-1])
+    return need
+
+
+class BadClaim(ValueError): pass
+
+
 def verify(ledger, sor_path, claim, contract, reader, actor="support-agent", independence="full"):
+    missing = sorted(claim_fields(contract) - set(claim))
+    if missing: raise BadClaim(f"claim is missing {', '.join(missing)} (needed by contract {contract['id']})")   # before any ledger write
     body = json.dumps(contract, sort_keys=True)
     ledger.db.execute("INSERT OR IGNORE INTO contract VALUES (?,?,?,?,?,?)", (contract["id"], contract["version"], body,
                       hashlib.sha256(body.encode()).hexdigest(), now(), contract["owner"]))

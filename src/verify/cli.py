@@ -12,7 +12,7 @@
 import json, os, sys
 from . import contract, hubspot, intercom, local, shopify, stripe, zendesk
 from . import __version__
-from .core import Ledger, verify, verify_export
+from .core import BadClaim, Ledger, verify, verify_export
 
 
 def reader_for(c):
@@ -44,7 +44,8 @@ def reader_for(c):
 def check(contract_path, claim_path, ledger_path="verify.db"):
     c = contract.load(contract_path)
     with open(claim_path) as f: claim = json.load(f)
-    run_id, v, level, reasons = verify(Ledger(ledger_path), None, claim, c, reader_for(c), actor=claim.get("actor", "unknown"))
+    try: run_id, v, level, reasons = verify(Ledger(ledger_path), None, claim, c, reader_for(c), actor=claim.get("actor", "unknown"))
+    except BadClaim as e: print(f"error: {e}", file=sys.stderr); return 2
     print(json.dumps({"run_id": run_id, "verdict": v, "level": level, "reasons": reasons, "ledger": ledger_path}, indent=1))
     return 0 if v == "pass" else 1
 

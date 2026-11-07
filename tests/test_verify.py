@@ -93,5 +93,24 @@ class TestCliExtras(unittest.TestCase):
             self.assertEqual(main(["ledger", "verify", exp]), 1)
 
 
+class TestClaimValidation(unittest.TestCase):
+    def test_missing_claim_field_rejected_before_ledger(self):
+        import tempfile, io, contextlib, sqlite3
+        from verify.core import BadClaim, Ledger, claim_fields, verify as run
+        self.assertEqual(claim_fields(hubspot.CONTRACT), {"deal", "amount", "company"})
+        d = tempfile.mkdtemp(); db = os.path.join(d, "l.db")
+        with self.assertRaises(BadClaim):
+            run(Ledger(db), None, {"deal": "1"}, hubspot.CONTRACT, lambda *_: self.fail("reader must not run"))
+        self.assertEqual(sqlite3.connect(db).execute("SELECT count(*) FROM event").fetchone()[0], 0)
+        c, cl = os.path.join(d, "c.json"), os.path.join(d, "claim.json")
+        json.dump(hubspot.CONTRACT, open(c, "w")); json.dump({"deal": "1"}, open(cl, "w"))
+        os.environ["HUBSPOT_VERIFY_TOKEN"] = "unused"
+        try:
+            with contextlib.redirect_stderr(io.StringIO()) as err:
+                self.assertEqual(main(["check", c, cl, "--ledger", db]), 2)
+        finally: del os.environ["HUBSPOT_VERIFY_TOKEN"]
+        self.assertIn("amount, company", err.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main()

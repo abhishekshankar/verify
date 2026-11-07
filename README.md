@@ -34,6 +34,7 @@ pip install -e .
 verify selfcheck        # all verdicts, duplicate refund, tamper detection, both adapters offline
 verify demo local       # SQLite stands in for Stripe + Zendesk
 verify ledger demo_out/ledger.db
+verify validate contracts/*.json   # reject bad contracts before any action runs
 ```
 
 Live adapters (test accounts only; keys come from env vars, never from code):
@@ -44,6 +45,13 @@ ZENDESK_SUBDOMAIN=... ZENDESK_AGENT_OAUTH=... ZENDESK_VERIFY_TOKEN=... verify de
 `STRIPE_VERIFY_KEY` should be a restricted key with Charges and Refunds set to Read.
 `ZENDESK_VERIFY_TOKEN` should be an OAuth token with scope `read`. Live Stripe keys are refused.
 
+## Check one real action
+Write a contract once, then check each claim the agent makes. The exit code is 0 only on `pass`, so it can gate a pipeline.
+```bash
+STRIPE_VERIFY_KEY=rk_test_... verify check contracts/refund.full.stripe.json claim.json --ledger verify.db
+```
+`claim.json` holds what the agent says it did, e.g. `{"actor": "support-agent", "charge_id": "ch_...", "refund_id": "re_...", "amount": 5000}` (see `examples/`).
+
 ## How it works
 1. **Contract**, written before the action: subject, preconditions, postconditions, forbidden effects, windows, scope.
 2. **Claim**: the actor's "done" is recorded, never used as evidence.
@@ -51,7 +59,7 @@ ZENDESK_SUBDOMAIN=... ZENDESK_AGENT_OAUTH=... ZENDESK_VERIFY_TOKEN=... verify de
 4. **Verdict**: evaluated, then written to an append-only SQLite ledger (`synchronous=FULL`) where each event hashes the one before it.
 
 ## Layout
-`src/verify/core.py` holds contracts, evaluation, the ledger and the verify loop. The adapters are `stripe.py`, `zendesk.py` and `local.py`.
+`src/verify/core.py` holds evaluation, the ledger and the verify loop; `contract.py` loads and validates contracts (`contracts/*.json`). The adapters are `stripe.py`, `zendesk.py` and `local.py`.
 
 ## Status
 v0.1, a pre-production demo. Not yet a stable API. MIT licence.

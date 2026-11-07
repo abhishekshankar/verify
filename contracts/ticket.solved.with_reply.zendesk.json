@@ -1,0 +1,37 @@
+{
+  "id": "ticket.solved.with_reply.zendesk",
+  "version": "1.0.0",
+  "owner": "support-ops",
+  "target_system": "zendesk",
+  "subject_ref": "ticket:{ticket}",
+  "subject_present": "ticket.exists",
+  "preconditions": [],
+  "postconditions": [
+    {
+      "path": "ticket.status",
+      "op": "eq",
+      "value": "solved"
+    },
+    {
+      "path": "ticket.public_agent_replies",
+      "op": "gt",
+      "value": 0
+    }
+  ],
+  "forbidden": [
+    {
+      "path": "ticket.auto_closed_tag",
+      "op": "eq",
+      "value": true
+    }
+  ],
+  "required_level": "L2",
+  "settle_window_s": 1.0,
+  "max_attempts": 3,
+  "scope": [
+    "ticket.exists",
+    "ticket.status",
+    "ticket.public_agent_replies",
+    "ticket.auto_closed_tag"
+  ]
+}

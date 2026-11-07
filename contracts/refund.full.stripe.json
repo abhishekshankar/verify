@@ -1,0 +1,48 @@
+{
+  "id": "refund.full.stripe",
+  "version": "1.0.0",
+  "owner": "support-ops",
+  "target_system": "stripe",
+  "subject_ref": "refund:{refund_id}",
+  "preconditions": [
+    {
+      "path": "charge.status",
+      "op": "eq",
+      "value": "succeeded"
+    }
+  ],
+  "postconditions": [
+    {
+      "path": "refund.status",
+      "op": "eq",
+      "value": "succeeded"
+    },
+    {
+      "path": "refund.amount",
+      "op": "eq",
+      "value": "{amount}"
+    },
+    {
+      "path": "charge.amount_refunded",
+      "op": "eq",
+      "value": "{amount}"
+    }
+  ],
+  "forbidden": [
+    {
+      "path": "charge.refund_count",
+      "op": "gt",
+      "value": 1
+    }
+  ],
+  "required_level": "L2",
+  "settle_window_s": 1.0,
+  "max_attempts": 3,
+  "scope": [
+    "charge.status",
+    "charge.amount_refunded",
+    "charge.refund_count",
+    "refund.status",
+    "refund.amount"
+  ]
+}

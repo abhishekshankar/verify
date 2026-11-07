@@ -23,6 +23,8 @@ jobs:
         run: python3 -c 'import sys; assert sys.version_info >= (3, 10), sys.version; print(sys.version)'
       - name: Offline tests (no Stripe/Zendesk secrets)
         run: PYTHONPATH=src python3 -m unittest discover -s tests -v
+      - name: Validate shipped contracts
+        run: PYTHONPATH=src python3 -m verify validate contracts/*.json
       - name: CLI smoke
         run: |
           cd "$RUNNER_TEMP"

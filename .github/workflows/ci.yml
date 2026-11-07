@@ -39,6 +39,17 @@ jobs:
       - name: Postgres, single connection
         run: PYTHONPATH=src:. python -m unittest hosted.test_hosted -v
         env: {VERIFY_TEST_PG_DSN: "host=localhost port=5432 user=postgres password=ci dbname=postgres", VERIFY_DB_POOL: "1"}
+  langgraph-example:
+    # Real framework path, no keys: the example must run through a compiled LangGraph graph.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install "langgraph==1.2.20"
+      - run: PYTHONPATH=src python examples/langgraph_node.py | tee out.txt && grep -q "running compiled graph" out.txt
+        env: {REQUIRE_LANGGRAPH: "1"}
   docker-smoke:
     runs-on: ubuntu-latest
     steps:

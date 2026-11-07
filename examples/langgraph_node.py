@@ -4,6 +4,8 @@
     python3 examples/langgraph_node.py
 """
 from typing import TypedDict
+import os, sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import _offline
 import verify
 
@@ -27,6 +29,8 @@ try:
     run = g.compile().invoke
     print("langgraph installed: running compiled graph")
 except ImportError:
+    import os
+    if os.environ.get("REQUIRE_LANGGRAPH"): raise   # CI sets this so the real-graph path can't silently fall back
     print("note: langgraph not installed; running the same nodes in order with a stub")
     def run(s):
         for node in (refund_node, verify_node): s = {**s, **node(s)}

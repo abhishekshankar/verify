@@ -9,7 +9,7 @@ variable "name" {
 variable "image_tag" {
   type        = string
   description = "Tag of the image pushed to the ECR repo this stack creates."
-  default     = "0.4.0"
+  default     = "0.4.1"
 }
 variable "certificate_arn" {
   type        = string

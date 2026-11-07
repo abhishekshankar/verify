@@ -1,4 +1,7 @@
 # Changelog
+## 0.4.1 (2026-11-07)
+- CI runs the LangGraph example through a real compiled graph (`REQUIRE_LANGGRAPH=1`)
+
 ## 0.4.0 (2026-11-07)
 - Claims missing a field the contract needs are rejected before any readback (`check` exits 2)
 - `verify check-batch` for JSONL claim files

@@ -1,4 +1,11 @@
 # Changelog
+## 0.4.0 (2026-11-07)
+- Claims missing a field the contract needs are rejected before any readback (`check` exits 2)
+- `verify check-batch` for JSONL claim files
+- `verify push`: upload a local ledger to the hosted API (`VERIFY_HOSTED_KEY`)
+- Hosted: pooled Postgres connections (`VERIFY_DB_POOL`); fixed concurrent SQLite access; DSN from `VERIFY_DB_*`
+- Hosted: Terraform for AWS us-east-2 (`hosted/deploy/`, validate only); Docker smoke test in CI
+
 ## 0.3.0 (2026-11-07)
 - Hosted ledger: access log, key rotation, UTF8 guard; tested on Postgres in CI
 - Static landing site (site/) with a manual GitHub Pages workflow

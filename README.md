@@ -35,7 +35,7 @@ Python 3.10+, no dependencies.
 pip install verify-outcomes          # or: pip install git+https://github.com/abhishekshankar/verify
 verify --version
 verify init stripe                   # writes contracts/ and an example claim
-verify selfcheck        # all verdicts, duplicate refund, tamper detection, both adapters offline
+verify selfcheck        # all verdicts, tamper detection, every adapter offline
 verify demo local       # SQLite stands in for Stripe + Zendesk
 verify ledger demo_out/ledger.db
 verify validate contracts/*.json   # reject bad contracts before any action runs
@@ -51,11 +51,23 @@ ZENDESK_SUBDOMAIN=... ZENDESK_AGENT_OAUTH=... ZENDESK_VERIFY_TOKEN=... verify de
 `ZENDESK_VERIFY_TOKEN` should be an OAuth token with scope `read`. `HUBSPOT_VERIFY_TOKEN` should be a private-app token with only `crm.objects.deals.read`. `INTERCOM_VERIFY_TOKEN` should be an Intercom app access token with only the Read conversations permission. `SHOPIFY_SHOP` (the `*.myshopify.com` subdomain) and `SHOPIFY_VERIFY_TOKEN` should come from a custom app with only `read_orders`. Live Stripe keys are refused.
 
 ## Check one real action
-Write a contract once, then check each claim the agent makes. The exit code is 0 only on `pass`, so it can gate a pipeline.
+Write a contract once, then check each claim the agent makes. The exit code is 0 only on `pass`, so it can gate a pipeline. A claim missing a field the contract needs is rejected (exit 2) before anything is read.
 ```bash
 STRIPE_VERIFY_KEY=rk_test_... verify check contracts/refund.full.stripe.json claim.json --ledger verify.db
 ```
 `claim.json` holds what the agent says it did, e.g. `{"actor": "support-agent", "charge_id": "ch_...", "refund_id": "re_...", "amount": 5000}` (see `examples/`).
+
+Many claims at once (one JSON object per line; exit 0 only if every claim passes):
+```bash
+verify check-batch contracts/refund.full.stripe.json claims.jsonl --ledger verify.db
+```
+
+## Hosted ledger (optional)
+`hosted/` is an append-only, multi-tenant ledger API (SQLite or Postgres). Push a local ledger to it with
+`VERIFY_HOSTED_KEY=... verify push verify.db --to https://ledger.example.com`. Deployment to AWS us-east-2 is in `hosted/deploy/` (Terraform; not applied).
+
+## Use from an agent
+`python -m verify.mcp_server` is an MCP server with `verify_check` and `verify_validate` (see `docs/MCP.md`). Framework examples are in `examples/`.
 
 ## How it works
 1. **Contract**, written before the action: subject, preconditions, postconditions, forbidden effects, windows, scope.
@@ -69,4 +81,4 @@ Python API: `verify.check(contract, claim, reader)`; see `docs/ADAPTERS.md`. Con
 `src/verify/core.py` holds evaluation, the ledger and the verify loop; `contract.py` loads and validates contracts (`contracts/*.json`). The adapters are `stripe.py`, `zendesk.py`, `hubspot.py` (deals), `intercom.py` (conversations), `shopify.py` (refunds, Admin GraphQL) (the last three offline-tested, live run pending) and `local.py`.
 
 ## Status
-v0.2, pre-production. Not yet a stable API. MIT licence.
+v0.4, pre-production. Not yet a stable API. MIT licence.

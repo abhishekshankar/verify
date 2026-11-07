@@ -4,7 +4,10 @@ from datetime import datetime, timezone
 
 def now(): return datetime.now(timezone.utc).isoformat()
 
-class Blocked(Exception): pass
+class Blocked(Exception):
+    """Readback impossible (auth, outage, rate limit). retry_after: seconds the system asked us to wait."""
+    def __init__(self, msg, retry_after=None):
+        super().__init__(msg); self.retry_after = retry_after
 
 # ---------------- evaluation ----------------
 OPS = {"eq": lambda a, b: a == b, "ne": lambda a, b: a != b, "gt": lambda a, b: a is not None and a > b,
@@ -75,13 +78,16 @@ def verify(ledger, sor_path, claim, contract, reader, actor="support-agent", ind
                       contract["subject_ref"].format(**claim), actor, now()))
     ledger.event(run_id, "action_claimed", claim)            # claim recorded, never used as evidence
     verdict, level, reasons = "not_observed", "L1", []
+    wait = contract["settle_window_s"]
     for attempt in range(1, contract["max_attempts"] + 1):
-        time.sleep(contract["settle_window_s"])
+        time.sleep(wait)
+        wait = contract["settle_window_s"]
         ledger.event(run_id, "readback_started", {"attempt": attempt})
         try:
             fields, raw = reader(sor_path, claim)
         except Blocked as e:
-            ledger.event(run_id, "readback_blocked", {"error": str(e)})
+            ledger.event(run_id, "readback_blocked", {"error": str(e), "retry_after": e.retry_after})
+            wait = min(e.retry_after if e.retry_after is not None else max(1, wait) * 2 ** attempt, 60)   # backoff, capped
             verdict, level, reasons = "blocked", "L0", [str(e)]
             continue
         ledger.event(run_id, "readback_observed", fields, evidence=raw)
@@ -92,3 +98,16 @@ def verify(ledger, sor_path, claim, contract, reader, actor="support-agent", ind
     ledger.db.commit()
     return run_id, verdict, level, reasons
 
+
+
+def check(contract, claim, reader, ledger="verify.db", actor=None, independence="full"):
+    """Python API. contract: dict or path; claim: dict; reader(sor, claim) -> (fields, raw_json).
+    Returns dict with verdict, level, reasons, run_id. Only verdict == "pass" means success."""
+    from . import contract as _c
+    c = _c.load(contract) if isinstance(contract, str) else contract
+    if not isinstance(contract, str):
+        errs = _c.validate(c)
+        if errs: raise ValueError("invalid contract: " + "; ".join(errs))
+    led = ledger if isinstance(ledger, Ledger) else Ledger(ledger)
+    run_id, v, level, reasons = verify(led, None, claim, c, reader, actor=actor or claim.get("actor", "unknown"), independence=independence)
+    return {"run_id": run_id, "verdict": v, "level": level, "reasons": reasons, "ok": v == "pass"}

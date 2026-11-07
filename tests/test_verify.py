@@ -26,5 +26,27 @@ class TestVerify(unittest.TestCase):
         self.assertEqual(main([]), 2)
 
 
+
+
+class TestApi(unittest.TestCase):
+  def test_python_api_and_blocked_backoff(self):
+    import tempfile, pathlib; tmp_path = pathlib.Path(tempfile.mkdtemp())
+    import verify
+    from verify.core import Blocked
+    c = {"id": "t", "version": "1", "owner": "o", "target_system": "x", "subject_ref": "r/{rid}",
+         "subject_present": "r.amount", "preconditions": [], "forbidden": [],
+         "postconditions": [{"path": "r.amount", "op": "eq", "value": "{amount}"}],
+         "required_level": "L2", "settle_window_s": 0, "max_attempts": 3, "scope": ["r.amount"]}
+    calls = []
+    def flaky(sor, claim):
+        calls.append(1)
+        if len(calls) == 1: raise Blocked("429", retry_after=0)
+        return {"r.amount": 5}, "{}"
+    r = verify.check(c, {"rid": "1", "amount": 5}, flaky, ledger=str(tmp_path / "l.db"))
+    assert r["ok"] and len(calls) == 2
+    def down(sor, claim): raise Blocked("503", retry_after=0)
+    assert verify.check(c, {"rid": "1", "amount": 5}, down, ledger=str(tmp_path / "l.db"))["verdict"] == "blocked"
+
+
 if __name__ == "__main__":
     unittest.main()

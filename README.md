@@ -59,6 +59,8 @@ STRIPE_VERIFY_KEY=rk_test_... verify check contracts/refund.full.stripe.json cla
 4. **Verdict**: evaluated, then written to an append-only SQLite ledger (`synchronous=FULL`) where each event hashes the one before it.
 
 ## Layout
+Python API: `verify.check(contract, claim, reader)`; see `docs/ADAPTERS.md`.
+
 `src/verify/core.py` holds evaluation, the ledger and the verify loop; `contract.py` loads and validates contracts (`contracts/*.json`). The adapters are `stripe.py`, `zendesk.py` and `local.py`.
 
 ## Status

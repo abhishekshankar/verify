@@ -6,6 +6,8 @@ AI agents and automations report success from their own logs. Verify ignores the
 system of record back with a **separate read-only credential**, and returns one of five verdicts.
 Anything it can't confirm fails closed.
 
+![Verify demo: agent claims 3/3 refunds, Stripe confirms 1/3](docs/verify-demo.gif)
+
 ```
 Agent says:      3/3 "Refund issued ✅"
 Verify (Stripe test mode, independence=full):

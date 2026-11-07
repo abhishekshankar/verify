@@ -7,7 +7,7 @@ Stdlib-only server; Postgres driver loads only if `psycopg` is installed. **Noth
 |---|---|
 | `store.py` | Storage: `Store` (SQLite, default) and `PostgresStore`. Chain check, retention purge. |
 | `server.py` | HTTP API + admin CLI (`add-tenant`, `purge`, `serve`). |
-| `client.py` | Push a local `verify` ledger, resuming from the server head. |
+| `client.py` | Alias for `verify.push`; use `verify push ledger.db --to URL` (key in `VERIFY_HOSTED_KEY`). |
 | `schema.postgres.sql` | Postgres schema, append-only triggers, role grants. |
 | `test_hosted.py` | `PYTHONPATH=src:. python3 -m unittest hosted.test_hosted -v` (from `verify/`). |
 

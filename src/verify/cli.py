@@ -1,6 +1,7 @@
 """usage:
   verify check <contract.json> <claim.json> [--ledger verify.db]   exit 0 only on pass
   verify check-batch <contract.json> <claims.jsonl> [--ledger verify.db]   one line per claim; exit 0 only if all pass
+  verify push <ledger.db> --to <url>      upload to the hosted ledger (key: env VERIFY_HOSTED_KEY)
   verify validate <contract.json>...
   verify ledger <db>
   verify ledger export <db> [out.jsonl]     hash-chained JSONL + chain head
@@ -104,6 +105,11 @@ def main(argv=None):
         return check(a[1], a[2], *a[4:5])
     if a[:1] == ["check-batch"] and len(a) in (3, 5) and (len(a) == 3 or a[3] == "--ledger"):
         return check_batch(a[1], a[2], *a[4:5])
+    if a[:1] == ["push"] and len(a) == 4 and a[2] == "--to":
+        from .push import push
+        key = os.environ.get("VERIFY_HOSTED_KEY")
+        if not key: print("error: set VERIFY_HOSTED_KEY", file=sys.stderr); return 2
+        r = push(a[1], a[3], key); print(f"pushed {r['pushed']} events, head {r['head']}"); return 0
     if a[:1] == ["validate"] and len(a) > 1:
         bad = 0
         for p in a[1:]:

@@ -4,7 +4,7 @@ import contextlib, hashlib, hmac, io, json, os, sqlite3, tempfile, threading, un
 from datetime import datetime, timedelta, timezone
 from hosted.store import Store, chain_hash
 from hosted.server import make_server
-from hosted.client import push
+from verify.push import push
 
 KEY = "test-export-key"
 PG = os.environ.get("VERIFY_TEST_PG_DSN")
@@ -129,5 +129,20 @@ class Hosted(unittest.TestCase):
                          ["fail", "not_observed", "pass"])
         run = self.call("GET", f"/v1/runs/{run_ids[0]}")[1]
         self.assertTrue(run["events"] and run["verdict"])
+
+    def test_cli_push(self):
+        from verify import local
+        from verify.cli import main
+        out = os.path.join(self.dir, "demo")
+        with contextlib.redirect_stdout(io.StringIO()): local.demo(out)
+        led = os.path.join(out, "ledger.db")
+        with contextlib.redirect_stderr(io.StringIO()): self.assertEqual(main(["push", led, "--to", self.base]), 2)   # no key
+        os.environ["VERIFY_HOSTED_KEY"] = "key-acme"
+        try:
+            for want in ("pushed 1", "pushed 0 events"):
+                buf = io.StringIO()
+                with contextlib.redirect_stdout(buf): self.assertEqual(main(["push", led, "--to", self.base]), 0)
+                self.assertIn(want, buf.getvalue())
+        finally: del os.environ["VERIFY_HOSTED_KEY"]
 
 if __name__ == "__main__": unittest.main()

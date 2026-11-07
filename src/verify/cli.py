@@ -6,7 +6,7 @@
   verify selfcheck
 """
 import json, os, sys
-from . import contract, local, stripe, zendesk
+from . import contract, hubspot, local, stripe, zendesk
 from .core import Ledger, verify
 
 
@@ -21,7 +21,11 @@ def reader_for(c):
         sub, tok = os.environ.get("ZENDESK_SUBDOMAIN"), os.environ.get("ZENDESK_VERIFY_TOKEN")
         if not (sub and tok): sys.exit("Set ZENDESK_SUBDOMAIN and ZENDESK_VERIFY_TOKEN (OAuth, scope read).")
         return zendesk.make_reader(zendesk.zd_http(sub, f"Bearer {tok}"))
-    sys.exit(f"no adapter for target_system {t!r} (have: stripe, zendesk)")
+    if t == "hubspot":
+        tok = os.environ.get("HUBSPOT_VERIFY_TOKEN")
+        if not tok: sys.exit("Set HUBSPOT_VERIFY_TOKEN (private app, crm.objects.deals.read only).")
+        return hubspot.make_reader(hubspot.hs_http(tok))
+    sys.exit(f"no adapter for target_system {t!r} (have: stripe, zendesk, hubspot)")
 
 
 def check(contract_path, claim_path, ledger_path="verify.db"):
@@ -53,7 +57,7 @@ def main(argv=None):
     if a[:2] == ["demo", "local"]: local.demo(); return 0
     if a[:2] == ["demo", "stripe"]: stripe.main(); return 0
     if a[:2] == ["demo", "zendesk"]: zendesk.main(); return 0
-    if a[:1] == ["selfcheck"]: local.check(); stripe.check(); zendesk.check(); return 0
+    if a[:1] == ["selfcheck"]: local.check(); stripe.check(); zendesk.check(); hubspot.check(); return 0
     print(__doc__); return 2
 
 

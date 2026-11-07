@@ -1,6 +1,6 @@
 import unittest
 import glob, json, os
-from verify import contract, local, stripe, zendesk
+from verify import contract, hubspot, local, stripe, zendesk
 from verify.cli import main
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -10,6 +10,7 @@ class TestVerify(unittest.TestCase):
     def test_local_all_verdicts_and_tamper(self): local.check()
     def test_stripe_adapter_offline(self): stripe.check()
     def test_zendesk_adapter_offline(self): zendesk.check()
+    def test_hubspot_adapter_offline(self): hubspot.check()
 
     def test_shipped_contracts_valid(self):
         files = glob.glob(os.path.join(ROOT, "contracts", "*.json"))

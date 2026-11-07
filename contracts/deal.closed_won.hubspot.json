@@ -1,0 +1,36 @@
+{
+  "id": "deal.closed_won.hubspot",
+  "version": "1.0.0",
+  "owner": "revops",
+  "target_system": "hubspot",
+  "subject_ref": "deal:{deal}",
+  "subject_present": "deal.exists",
+  "preconditions": [],
+  "postconditions": [
+    {
+      "path": "deal.dealstage",
+      "op": "eq",
+      "value": "closedwon"
+    },
+    {
+      "path": "deal.amount",
+      "op": "eq",
+      "value": "{amount}"
+    },
+    {
+      "path": "deal.company_id",
+      "op": "eq",
+      "value": "{company}"
+    }
+  ],
+  "forbidden": [],
+  "required_level": "L2",
+  "settle_window_s": 1.0,
+  "max_attempts": 3,
+  "scope": [
+    "deal.exists",
+    "deal.dealstage",
+    "deal.amount",
+    "deal.company_id"
+  ]
+}

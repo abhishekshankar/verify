@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "verify-outcomes"
-version = "0.4.1"
+version = "0.4.2"
 description = "Independent readback verification for AI agents and automations. Unknown fails closed."
 readme = "README.md"
 license = "MIT"

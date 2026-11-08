@@ -10,7 +10,7 @@ Code only. Nothing here has been applied. Applying creates billable resources (A
 1. `terraform init && terraform apply -var certificate_arn=arn:aws:acm:...`
    This also creates the ECR repo, but the service can't start until step 2.
 2. Build for ARM and push:
-   `docker build --platform linux/arm64 -f hosted/Dockerfile -t <ecr_repository_url>:0.4.1 . && docker push <ecr_repository_url>:0.4.1`
+   `docker build --platform linux/arm64 -f hosted/Dockerfile -t <ecr_repository_url>:0.4.2 . && docker push <ecr_repository_url>:0.4.2`
 3. Apply the schema once, as the owner (credentials are in the `db_master_secret_arn` secret), from a host inside the VPC (for example an ECS exec session):
    `psql "host=<db_address> dbname=verify user=verify_owner sslmode=require" -f hosted/schema.postgres.sql`
 4. Create a tenant: run `python -m hosted.server add-tenant <id>` in a one-off task with the same environment. The key is printed once.

@@ -81,4 +81,4 @@ Python API: `verify.check(contract, claim, reader)`; see `docs/ADAPTERS.md`. Con
 `src/verify/core.py` holds evaluation, the ledger and the verify loop; `contract.py` loads and validates contracts (`contracts/*.json`). The adapters are `stripe.py`, `zendesk.py`, `hubspot.py` (deals), `intercom.py` (conversations), `shopify.py` (refunds, Admin GraphQL) (the last three offline-tested, live run pending) and `local.py`.
 
 ## Status
-v0.4, pre-production. Not yet a stable API. MIT licence.
+v0.4.1 on [PyPI](https://pypi.org/project/verify-outcomes/), pre-production. Not yet a stable API. MIT licence.

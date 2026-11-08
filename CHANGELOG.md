@@ -1,4 +1,7 @@
 # Changelog
+## Unreleased
+- HubSpot: dedupe company associations. The v3 API lists one company twice (labelled and unlabelled), which made true claims fail. Found in the first live run on 2026-11-08; live pass, fail, not_observed and write-refused (403) now confirmed
+
 ## 0.4.1 (2026-11-07)
 - CI runs the LangGraph example through a real compiled graph (`REQUIRE_LANGGRAPH=1`)
 

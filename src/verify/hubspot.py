@@ -40,7 +40,8 @@ def make_reader(http):
     def reader(_unused, claim):
         st, d = http("GET", f"/crm/v3/objects/deals/{claim['deal']}?properties=dealstage,amount&associations=companies")
         p = d.get("properties", {}) if st == 200 else {}
-        companies = [a["id"] for a in d.get("associations", {}).get("companies", {}).get("results", [])] if st == 200 else []
+        # HubSpot v3 lists one company twice (deal_to_company + deal_to_company_unlabeled): dedupe, keep order
+        companies = list(dict.fromkeys(a["id"] for a in d.get("associations", {}).get("companies", {}).get("results", []))) if st == 200 else []
         amt = p.get("amount")
         raw = {"deal.exists": st == 200, "deal.dealstage": p.get("dealstage"),
                "deal.amount": float(amt) if amt not in (None, "") else None,     # HubSpot returns strings
@@ -55,7 +56,8 @@ def fake_hubspot(deals):
         d = deals.get(path.split("/")[5].split("?")[0])
         if d is None: return 404, {}
         return 200, {"properties": {"dealstage": d[0], "amount": d[1]},
-                     "associations": {"companies": {"results": [{"id": c} for c in d[2]]}}}
+                     "associations": {"companies": {"results": [{"id": c, "type": t} for c in d[2]
+                                                                for t in ("deal_to_company", "deal_to_company_unlabeled")]}}}
     return http
 
 

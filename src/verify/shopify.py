@@ -109,6 +109,8 @@ def check():
     led, reader = Ledger(os.path.join(tempfile.mkdtemp(), "l.db")), make_reader(fake_shopify(orders))
     claims = [("1", "11"), ("2", "21"), ("3", "31"), ("4", "41"), ("5", "99"), ("9", "91"), ("6", "61")]
     got = [verify(led, None, {"order": o, "refund_id": r, "amount": 50.0}, c, reader)[1] for o, r in claims]
+    # money as text, as Shopify itself writes it: must still pass
+    assert verify(led, None, {"order": "1", "refund_id": "11", "amount": "50.00"}, c, reader)[1] == "pass"
     assert got == ["pass", "fail", "fail", "fail", "not_observed", "not_observed", "blocked"], got
     try: fake_shopify(orders)("mutation { refundCreate(input: {}) { userErrors { message } } }", {}); assert False
     except Blocked: pass

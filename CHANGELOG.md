@@ -1,4 +1,7 @@
 # Changelog
+## Unreleased
+- Comparisons treat a numeric string as a number when the other side is a number (`"749.95"` == `749.95`). A correct Shopify refund claim sent with the amount as text failed live.
+
 ## 0.4.2 (2026-11-08)
 - HubSpot: dedupe company associations. The v3 API lists one company twice (labelled and unlabelled), which made true claims fail. Found in the first live run on 2026-11-08; live pass, fail, not_observed and write-refused (403) now confirmed
 

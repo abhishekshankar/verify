@@ -10,8 +10,18 @@ class Blocked(Exception):
         super().__init__(msg); self.retry_after = retry_after
 
 # ---------------- evaluation ----------------
-OPS = {"eq": lambda a, b: a == b, "ne": lambda a, b: a != b, "gt": lambda a, b: a is not None and a > b,
-       "lt": lambda a, b: a is not None and a < b, "exists": lambda a, b: a is not None}
+def _num(a, b):
+    """Money arrives as text from many APIs and agents ("749.95"): if one side is a number, read the other as one too."""
+    isnum = lambda x: isinstance(x, (int, float)) and not isinstance(x, bool)
+    try:
+        if isnum(a) and isinstance(b, str): return a, float(b)
+        if isnum(b) and isinstance(a, str): return float(a), b
+    except ValueError: pass
+    return a, b
+
+OPS = {"eq": lambda a, b: (lambda x, y: x == y)(*_num(a, b)), "ne": lambda a, b: (lambda x, y: x != y)(*_num(a, b)),
+       "gt": lambda a, b: a is not None and (lambda x, y: x > y)(*_num(a, b)),
+       "lt": lambda a, b: a is not None and (lambda x, y: x < y)(*_num(a, b)), "exists": lambda a, b: a is not None}
 
 def resolve(v, claim):
     if isinstance(v, str) and v.startswith("{") and v.endswith("}"): return claim[v[1:-1]]

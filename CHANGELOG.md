@@ -1,5 +1,5 @@
 # Changelog
-## Unreleased
+## 0.4.3 (2026-11-08)
 - Comparisons treat a numeric string as a number when the other side is a number (`"749.95"` == `749.95`). A correct Shopify refund claim sent with the amount as text failed live.
 
 ## 0.4.2 (2026-11-08)

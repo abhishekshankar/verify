@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Commitments Report</title>
+<meta name="description" content="Every promise, decision and approval in 90 days of your email, Slack, tickets and meetings, and which ones never happened. Fixed price, 5 working days, data deleted after.">
+<meta property="og:title" content="Commitments Report: decided, never done.">
+<meta property="og:description" content="Every promise, decision and approval in your team's own messages, checked for follow-through. USD 900, 5 working days.">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,800&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: a minutes ledger. Each row is something someone said; the right edge is what the record shows happened. */
+:root{
+  --paper:#f6f4ef; --ink:#1b1a17; --muted:#5f5a52; --rule:#d8d2c6; --card:#fffdf8;
+  --done:#1d7a4f; --open:#b3261e; --flag:#8a5a00; --accent:#7a2e0e; --hi:#f1e3b0;
+  --display:"Bricolage Grotesque",ui-sans-serif,system-ui,sans-serif;
+  --body:"Source Serif 4",Georgia,serif;
+  --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --paper:#15130f; --ink:#ece6da; --muted:#a39b8d; --rule:#33302a; --card:#1d1a15;
+  --done:#4cc38a; --open:#ff7a6e; --flag:#e2b04a; --accent:#f0a07a; --hi:#4a3c12; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --paper:#15130f; --ink:#ece6da; --muted:#a39b8d; --rule:#33302a; --card:#1d1a15;
+  --done:#4cc38a; --open:#ff7a6e; --flag:#e2b04a; --accent:#f0a07a; --hi:#4a3c12; color-scheme:dark}
+:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{margin:0;background:var(--paper);color:var(--ink);font:400 1.06rem/1.6 var(--body);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.wrap{max-width:1080px;margin:0 auto;padding-block:40px 72px;display:grid;grid-template-columns:minmax(0,1fr);gap:88px}
+.wrap>*{min-width:0}
+a{color:var(--accent)} a:focus-visible,.btn:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+nav{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;font:600 .78rem/1 var(--mono);letter-spacing:.08em;text-transform:uppercase}
+nav a{color:var(--muted);text-decoration:none} nav a:hover{color:var(--ink)}
+nav .links{display:flex;gap:20px;flex-wrap:wrap}
+.eyebrow{font:600 .74rem/1.3 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+h1{font:800 clamp(2.8rem,9vw,6.4rem)/.95 var(--display);letter-spacing:-.03em;margin:.25em 0 .3em;text-wrap:balance}
+h1 .struck{position:relative;color:var(--muted)}
+h1 .struck::after{content:"";position:absolute;left:-2%;right:-2%;top:54%;height:.09em;background:var(--open);transform:rotate(-2deg) scaleX(0);transform-origin:left;animation:strike .7s .5s cubic-bezier(.6,.1,.2,1) forwards}
+@keyframes strike{to{transform:rotate(-2deg) scaleX(1)}}
+@media (prefers-reduced-motion:reduce){h1 .struck::after{animation:none;transform:rotate(-2deg) scaleX(1)}}
+h2{font:800 clamp(1.7rem,4vw,2.6rem)/1.05 var(--display);letter-spacing:-.015em;margin:0 0 .5em;text-wrap:balance}
+h3{font:600 1.1rem/1.3 var(--display);margin:0}
+.lede{max-width:58ch;font-size:1.25rem;color:var(--muted);margin:0}
+.ctas{display:flex;flex-wrap:wrap;gap:12px;margin-top:32px;align-items:center}
+.btn{font:600 .95rem/1 var(--mono);padding:15px 20px;border:1.5px solid var(--ink);color:var(--ink);text-decoration:none;border-radius:2px;display:inline-block}
+.btn.primary{background:var(--ink);color:var(--paper)}
+.btn.primary:hover{background:var(--accent);border-color:var(--accent)}
+.fine{font:400 .8rem/1.5 var(--mono);color:var(--muted)}
+/* hero ledger */
+.minutes{margin-top:56px;border-top:2px solid var(--ink);font-family:var(--mono);font-size:.88rem}
+.m{display:grid;grid-template-columns:7.5rem minmax(0,1fr) 11rem;gap:16px;padding:14px 0;border-bottom:1px solid var(--rule);align-items:baseline}
+.m.head{font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.m .src{color:var(--muted)}
+.m q{quotes:"“" "”";font-family:var(--body);font-size:1.02rem}
+.m .why{display:block;color:var(--muted);font-size:.78rem;margin-top:4px}
+.tag{justify-self:start;font-weight:600;font-size:.74rem;letter-spacing:.08em;text-transform:uppercase;padding:4px 8px;border:1.5px solid currentColor;border-radius:2px;transform:rotate(-1.5deg)}
+.done{color:var(--done)} .open{color:var(--open)} .flag{color:var(--flag)}
+.tally{display:flex;flex-wrap:wrap;gap:8px 36px;padding-top:16px;font-family:var(--mono);font-size:.9rem}
+.tally b{font:800 1.6rem/1 var(--display);display:block}
+@media (max-width:680px){.m{grid-template-columns:minmax(0,1fr) 8.5rem}.m .src{grid-column:1/-1;font-size:.74rem}.m.head .src{display:none}}
+/* findings grid */
+.finds{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:1px;background:var(--rule);border:1px solid var(--rule)}
+.finds>div{background:var(--card);padding:24px;display:grid;gap:8px;align-content:start}
+.finds .n{font:600 .72rem/1 var(--mono);color:var(--accent);letter-spacing:.1em}
+.finds p{margin:0;color:var(--muted);font-size:.98rem}
+/* steps */
+.steps{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));gap:28px;counter-reset:d}
+.steps li{border-top:2px solid var(--ink);padding-top:12px;display:grid;gap:6px}
+.steps .day{font:600 .72rem/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--accent)}
+.steps p{margin:0;color:var(--muted);font-size:.96rem}
+/* trust */
+.trust{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:28px 40px}
+.trust p{margin:.3em 0 0;color:var(--muted);font-size:.96rem}
+table{border-collapse:collapse;width:100%;font-size:.95rem;font-variant-numeric:tabular-nums}
+td,th{text-align:left;padding:10px 14px 10px 0;border-bottom:1px solid var(--rule);vertical-align:top}
+th{font:600 .72rem/1.2 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.scroll{overflow-x:auto}
+/* pricing */
+.price{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:24px}
+.plan{border:1.5px solid var(--ink);background:var(--card);padding:28px;display:grid;gap:14px;align-content:start}
+.plan.founding{border-color:var(--accent);box-shadow:6px 6px 0 var(--hi)}
+.plan .amt{font:800 3.2rem/1 var(--display);letter-spacing:-.02em}
+.plan .amt small{font:400 .9rem var(--mono);color:var(--muted);letter-spacing:0}
+.plan ul{margin:0;padding-left:1.1em;color:var(--muted);display:grid;gap:4px}
+.badge{justify-self:start;font:600 .7rem/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;background:var(--accent);color:var(--paper);padding:6px 8px;border-radius:2px}
+details{border-bottom:1px solid var(--rule);padding:14px 0}
+summary{cursor:pointer;font:600 1.02rem/1.4 var(--display)}
+details p{margin:.6em 0 0;color:var(--muted);max-width:68ch}
+footer{font:400 .8rem/1.6 var(--mono);color:var(--muted);display:grid;gap:6px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <nav aria-label="Site">
+    <a href="../">Unpent studio · Verify</a>
+    <div class="links"><a href="#findings">What you get</a><a href="sample.html">Sample report</a><a href="#trust">Your data</a><a href="#price">Price</a></div>
+  </nav>
+
+  <header>
+    <div class="eyebrow">Commitments Report · fixed price · 5 working days</div>
+    <h1>Decided. <span class="struck">Never done.</span></h1>
+    <p class="lede">We read 90 days of your team's own email, Slack, tickets and meeting transcripts and list every promise, decision and approval in them, with whether anything shows it actually happened. Every finding cites the message it came from.</p>
+    <div class="ctas">
+      <a class="btn primary" href="https://buy.stripe.com/dRm00j5OSaKGc5XgVm6wE04">Claim a founding spot · USD 600</a>
+      <a class="btn" href="sample.html">See a sample report</a>
+    </div>
+    <p class="fine" style="margin-top:14px">3 founding spots at USD 600, then USD 900. Full refund if we haven't started.</p>
+
+    <div class="minutes" role="table" aria-label="Example findings from the sample report (synthetic data)">
+      <div class="m head" role="row"><span class="src">Where</span><span>What was said</span><span>What the record shows</span></div>
+      <div class="m" role="row"><span class="src">meeting · Mar 4</span><span><q>We decided to switch payroll vendors this quarter.</q><span class="why">no follow-up in email, Slack or tickets since</span></span><span class="tag open">Decided, never done</span></div>
+      <div class="m" role="row"><span class="src">Slack · Mar 5</span><span><q>I will rotate the vendor bank details tomorrow.</q><span class="why">approved with “go ahead” in a thread, no ticket</span></span><span class="tag flag">Informal approval</span></div>
+      <div class="m" role="row"><span class="src">Jira · Mar 5</span><span><q>Vendor asked to change bank account.</q><span class="why">no call-back or verification found</span></span><span class="tag flag">Payment change, unverified</span></div>
+      <div class="m" role="row"><span class="src">Jira · Mar 5</span><span><q>I'll patch the exporter by Thursday.</q><span class="why">ticket resolved Mar 7</span></span><span class="tag done">Done</span></div>
+    </div>
+    <div class="tally"><span><b>20</b>promises and decisions</span><span><b>16</b>with no follow-through</span><span><b>2</b>payment-detail changes</span><span><b>40</b>messages, 3 sources</span></div>
+    <p class="fine">From the <a href="sample.html">sample report</a>, run on made-up exports. Names are fictional.</p>
+  </header>
+
+  <section id="findings" aria-labelledby="h-find">
+    <div class="eyebrow">What you get</div>
+    <h2 id="h-find">Eight lists you can act on Monday</h2>
+    <div class="finds">
+      <div><span class="n">DECIDED, NEVER DONE</span><h3>Meeting decisions with no trace after</h3><p>“We decided…”, “let's go with…”, named action items. Checked against everything said afterwards, in every source.</p></div>
+      <div><span class="n">OPEN PROMISES</span><h3>“I'll send it Friday”, still waiting</h3><p>First-person commitments with a due date and no done-evidence, oldest first.</p></div>
+      <div><span class="n">PAYMENT CHANGES</span><h3>Bank-detail change requests</h3><p>Flagged with the warning signs: new sender, lookalike domain, urgency, “don't call”. Marked verified only if someone called back.</p></div>
+      <div><span class="n">NO REPLY</span><h3>Requests nobody answered</h3><p>“Can you…?” and “please…” left without a reply from the person asked, past the days you choose.</p></div>
+      <div><span class="n">INFORMAL APPROVALS</span><h3>Money said yes to in chat</h3><p>“Go ahead”, 👍 and “sounds good” on spend, contracts, vendors and access, split from approvals made in a ticket.</p></div>
+      <div><span class="n">WHO DECIDES</span><h3>The real deciders</h3><p>Who actually approves, by how often their yes is the one that moves things.</p></div>
+      <div><span class="n">LATE RECORDS</span><h3>Notes written long after</h3><p>Messages edited days later and recaps of meetings a week or more ago: low-trust evidence, marked as such.</p></div>
+      <div><span class="n">DONE</span><h3>What did happen</h3><p>Promises with follow-through, and the message, reaction or resolved ticket that shows it.</p></div>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-how">
+    <div class="eyebrow">How it runs</div>
+    <h2 id="h-how">Five working days, one readout</h2>
+    <ol class="steps">
+      <li><span class="day">Day 0</span><h3>Pay and sign</h3><p>One-page statement of work, our Trust Pack and DPA, and an employee-notice checklist for your side.</p></li>
+      <li><span class="day">Day 1</span><h3>You export</h3><p>Gmail or Outlook, a Slack export zip, Jira or Zendesk CSV, Zoom or Otter transcripts. We send step-by-step how-tos.</p></li>
+      <li><span class="day">Days 2–3</span><h3>We run and check</h3><p>The analysis runs locally. A person spot-checks findings against the cited messages before anything reaches you.</p></li>
+      <li><span class="day">Day 4</span><h3>Readout</h3><p>45 minutes on the report, oldest open items first. A payment-change flag gets a same-day call, not a wait.</p></li>
+      <li><span class="day">Day 5+</span><h3>Deletion receipt</h3><p>Your exports and working files are deleted; you get a receipt listing every file removed.</p></li>
+    </ol>
+  </section>
+
+  <section id="trust" aria-labelledby="h-trust">
+    <div class="eyebrow">Your data</div>
+    <h2 id="h-trust">Built for messages you'd rather nobody read</h2>
+    <div class="trust">
+      <div><h3>Local processing</h3><p>Runs on a machine we control in the US, or on yours. No connectors into your systems: you send exports, we never hold a login.</p></div>
+      <div><h3>AI off by default</h3><p>The analysis is rule-based. An optional AI review runs only with your written approval, on a zero-retention API, never used for training.</p></div>
+      <div><h3>Redacted and pseudonymised</h3><p>Emails, phones, card and bank numbers, IBANs, SSNs and street addresses become placeholders. People appear as P1, P2… by default.</p></div>
+      <div><h3>Deleted, with a receipt</h3><p>Within 30 days of delivery, or 7 days after you ask. The receipt lists each file, its size and fingerprint.</p></div>
+      <div><h3>Not for scoring people</h3><p>Findings are prompts to check, not verdicts on anyone. The contract rules out using them for performance reviews.</p></div>
+      <div><h3>Your people know first</h3><p>We start only after you confirm the employee-notice checklist: lawful basis, notice, works council where needed, excluded channels.</p></div>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-acc">
+    <div class="eyebrow">How accurate</div>
+    <h2 id="h-acc">Measured, and we show you how</h2>
+    <div class="scroll"><table>
+      <tr><th>Source</th><th>Right when it flags</th><th>Sample</th></tr>
+      <tr><td>Email (Enron corpus, real)</td><td>90%</td><td>18 of 20 checked by hand</td></tr>
+      <tr><td>Slack</td><td>87%</td><td>30 labelled messages</td></tr>
+      <tr><td>Tickets (Jira)</td><td>100%</td><td>26 labelled messages</td></tr>
+      <tr><td>Meetings (Zoom)</td><td>100%</td><td>20 labelled turns</td></tr>
+      <tr><td>Payment, approval and late-record flags</td><td>88%</td><td>18 labelled messages</td></tr>
+    </table></div>
+    <p class="fine">Slack, ticket, meeting and flag sets are small and synthetic, labelled before the tool ran on them. Every report also measures accuracy on your own data when you agree to label a sample. “No evidence” is not proof something wasn't done: phone calls and tools you don't export are invisible.</p>
+  </section>
+
+  <section id="price" aria-labelledby="h-price">
+    <div class="eyebrow">Price</div>
+    <h2 id="h-price">One price. No subscription.</h2>
+    <div class="price">
+      <div class="plan founding">
+        <span class="badge">3 founding spots</span>
+        <div class="amt">USD 600 <small>once</small></div>
+        <ul><li>The full report and a 45-minute readout</li><li>Up to 90 days, any mix of sources</li><li>Case study only if you separately agree</li></ul>
+        <a class="btn primary" href="https://buy.stripe.com/dRm00j5OSaKGc5XgVm6wE04">Claim a founding spot</a>
+        <span class="fine">Closes automatically after the third order.</span>
+      </div>
+      <div class="plan">
+        <span class="badge" style="background:var(--ink)">Standard</span>
+        <div class="amt">USD 900 <small>once</small></div>
+        <ul><li>The same report and readout</li><li>Re-run on new data within 6 months: USD 400</li><li>Delivered in 5 working days from complete exports</li></ul>
+        <a class="btn" href="https://buy.stripe.com/aFafZhfps9GC8TL6gI6wE03">Order a report</a>
+        <span class="fine">Card, via Stripe. Receipt from LuxeTruc LLC.</span>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-faq">
+    <div class="eyebrow">Questions</div>
+    <h2 id="h-faq">Before you order</h2>
+    <details><summary>What happens after I pay?</summary><p>Within one working day you get the statement of work, the DPA and the intake checklist at the email you used at checkout. Nothing is analysed until the checklist comes back confirmed.</p></details>
+    <details><summary>What if it isn't a fit?</summary><p>Full refund before we start. If you can't send compliant exports within 30 days, we refund all but USD 100. If we can't complete the analysis, full refund. Incomplete work is deleted either way.</p></details>
+    <details><summary>Which tools do you read?</summary><p>Email (Gmail Takeout, Outlook via mbox, maildir), Slack workspace exports, Jira, Zendesk and Linear CSV exports, and Zoom, Otter, Fireflies, Granola and Gong transcripts. Any mix, in one report.</p></details>
+    <details><summary>Do you need access to our systems?</summary><p>No. You send exports; we never ask for a login, an API key or an integration.</p></details>
+    <details><summary>Is this a fraud investigation?</summary><p>No. Payment-change and approval findings are things to check. We don't authenticate payment instructions or decide whether anything was fraud.</p></details>
+    <details><summary>We're in the EU.</summary><p>Tell us before you order. We'll attach the EU standard contractual clauses to the DPA and confirm where processing happens.</p></details>
+  </section>
+
+  <section class="plan" aria-labelledby="h-end" style="gap:16px">
+    <h2 id="h-end" style="margin:0">Find out what your team decided and never did.</h2>
+    <div class="ctas" style="margin:0">
+      <a class="btn primary" href="https://buy.stripe.com/dRm00j5OSaKGc5XgVm6wE04">Claim a founding spot · USD 600</a>
+      <a class="btn" href="https://github.com/abhishekshankar/verify/issues/new?title=Commitments%20Report%20question&body=Please%20don%27t%20include%20company%20data%20here.">Ask a question</a>
+    </div>
+  </section>
+
+  <footer>
+    <span>Commitments Report · by Unpent studio (LuxeTruc LLC) · from the makers of <a href="../">Verify</a></span>
+    <span>Questions go to a public GitHub issue: please don't post company data there.</span>
+  </footer>
+</div>
+</body>
+</html>

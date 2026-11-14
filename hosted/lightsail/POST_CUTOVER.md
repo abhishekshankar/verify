@@ -58,12 +58,14 @@ retirement; that is established by the AWS resource evidence below.
    the same TARGET. Save the prior DNS record, actual TTL and change time. Wait
    out the observed DNS cache interval and verify the domain through independent
    resolvers before retiring that ALB. Do not infer propagation from one resolver.
-2. Save the exact old ECS service/task definitions, task ARN/image, desired count,
-   network inventory, grace setting and routing metadata to versioned S3. Check
-   no task or automation outside that service uses the source database. Scale
-   the old service to zero only after the target proof and backup gate pass; wait
-   for all its old tasks and ENIs to stop. Keep the ALB bridge route during DNS
-   propagation. Do not restore its old source route or clear the database fence.
+2. Preserve the versioned service/task definitions, exact old and temporary task
+   ARNs/images, desired counts, network inventory, grace setting and routing
+   metadata. The corrected cutover already requires the managed service at zero
+   with every old managed process stopped. Confirm it remains there. After the
+   target proof and backup gate pass, stop the exact temporary standalone source
+   task and wait for its process and ENI to stop. Check no other task or automation
+   uses the source database. Keep the ALB bridge route during DNS propagation.
+   Do not restore its old source route or clear the database fence.
 3. Before deleting RDS, pin its ARN, `DbiResourceId`, endpoint, account/region,
    encryption key, seven-day retention, actual earliest/latest restore times,
    parameter/option groups and deletion protection. The final logical dump is

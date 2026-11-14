@@ -256,6 +256,59 @@ checks and the entire handover; do not use the direct coordinator CLI to replace
 that evidence boundary. AWS backup access comes from this EC2 instance's scoped
 profile, not an AWS key in the shell.
 
+### Transfer and invoke through SSM
+
+The reviewed `ssm_migration_glue.py` runs in CloudShell. It pins the standalone
+routing adapter and all four deployed target helper checksums. Copy those exact
+reviewed files to private CloudShell storage, then use their actual paths:
+
+```sh
+python3 ssm_migration_glue.py prepare --route-script route_standalone_source.py
+```
+
+This calls `ready` again, downloads the exact returned S3 object version on the
+target, checks encryption, size, checksum and the two-minute evidence age, then
+invokes `prepare_standalone_source prepare`. Require SSM `Success`, response code
+zero and `STANDALONE_SOURCE_TRANSITION_VERIFIED` before the routing adapter's
+`handover`. Wait for the normal ECS stop/drain barrier described above.
+
+```sh
+python3 ssm_migration_glue.py rehearse
+```
+
+Require SSM `Success`, response code zero and `REHEARSAL_PASSED`. The glue saves
+that exact target report path, checksum, timestamp and measured duration in a
+private CloudShell result. The final command then refreshes the complete AWS
+drain/writer proof and passes its exact version to the target:
+
+```sh
+python3 ssm_migration_glue.py execute --route-script route_standalone_source.py
+```
+
+The target checks the five-minute routing evidence and the thirty-minute,
+eight-second rehearsal limits, pins the routing report, then runs the unchanged
+locked attester/coordinator. Require `TARGET_AUTHORITATIVE` before following the
+post-cutover instructions. This command deliberately changes database authority.
+
+The CLI prints its SSM CommandId immediately after submission and polls for at
+most 45 seconds per invocation. Run the CloudShell operation in the background
+when waiting on browser control, so AWS inventory does not block status updates.
+If it reports `PENDING`, resume that exact command:
+
+```sh
+python3 ssm_migration_glue.py poll --command-id EXISTING_COMMAND_ID
+```
+
+The first `execute` saves and fsyncs a durable intent before `SendCommand`. Any
+later `execute` is blocked, including after failure or an uncertain result. Its
+unique intent ID is also in the SSM comment. If the submit response was lost,
+use `python3 ssm_migration_glue.py resume-execute`: it discovers only the exact
+comment, target and command hash, records the CommandId, and requests polling of
+that command. Empty or ambiguous discovery leaves the intent blocked. There is
+no automatic retry or reset command. Review the target's private reports and
+durable authority if execution failed or timed out. The glue never automatically
+restores SOURCE.
+
 ## Single-process cutover and rollback boundary
 
 Run the attester's `execute` command locally with the pinned routing proof and

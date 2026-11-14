@@ -125,16 +125,26 @@ def checked_report(report_path, digest):
     require(report.get("accountId") == ACCOUNT and report.get("instanceId") == INSTANCE
             and report.get("sourceHost") == SOURCE_HOST and report.get("targetPrivateIp") == TARGET_IP,
             "Routing evidence identity mismatch")
-    grace_remaining = (datetime.fromisoformat(report["sourceGraceExpiresAtUtc"]) - datetime.now(timezone.utc)).total_seconds()
-    require(grace_remaining > 600 and report.get("sourceGraceRemainingSeconds", 0) > 600,
-            "The independently observed ECS health grace is expired or too close to expiry")
+    require(report.get("drainMethod") == "ECS_SERVICE_STOPPED_STANDALONE_SOURCE"
+            and report.get("sourceBackendKind") == "standalone" and report.get("singleStandaloneRunning") is True
+            and report.get("sourceTaskGroup") == "family:verify-ledger"
+            and report.get("standaloneStartedBy", "").startswith("verify-migration-"),
+            "Only the standalone-source/managed-task-stop drain method is accepted; manual deregistration was retired")
+    require(all(type(report.get(key)) is int and report[key] == 0 for key in
+                ("originalServiceDesiredCount", "originalServiceRunningCount", "originalServicePendingCount")),
+            "The old managed ECS service can still run or start a source task")
+    stopped = report.get("oldServiceTasks", [])
+    require(stopped and all(item.get("taskArn") and item.get("lastStatus") == "STOPPED" for item in stopped)
+            and len({item["taskArn"] for item in stopped}) == len(stopped)
+            and report.get("sourceTaskArn") not in {item["taskArn"] for item in stopped},
+            "Every observed old managed source task must be STOPPED before final copy")
     drain = report["drain"]
-    require(drain.get("explicitDeregistrationRequested") is True
+    require(drain.get("serviceScaleDownRequested") is True
             and drain.get("originalDelayUnchanged") is True
             and drain.get("elapsedSeconds", -1) >= drain.get("configuredDelaySeconds", 999999)
             and drain.get("targetAbsentFromRegisteredList") is True
-            and drain.get("explicitTargetReason") == "Target.NotRegistered",
-            "The old ALB target has not completed its configured deregistration drain")
+            and drain.get("allOldTargetsNotRegistered") is True,
+            "Managed source tasks have not completed normal service shutdown and configured ALB drain")
     routing = report["routing"]
     require(routing.get("positiveWeightTargetGroups") == [report["bridgeTargetGroup"]]
             and routing.get("sourceTargetGroupWeight") == 0 and routing.get("targetGroupStickinessEnabled") is False
@@ -157,7 +167,7 @@ def accept(report_path, digest):
     report = checked_report(report_path, digest)
     proof = snapshot(report["sourcePrivateIp"])
     config = json.loads(CONFIG.read_text())
-    # Persistent booleans must never outlive the short source/task/grace evidence.
+    # Persistent booleans must never outlive the fresh source/task/stop evidence.
     # Only execute() can set these in an in-memory configuration under the lock.
     config["readiness"]["oldAlbRequestsDrained"] = False
     config["readiness"]["allOtherSourceWritersDisabled"] = False
@@ -165,8 +175,8 @@ def accept(report_path, digest):
                 "instanceId": INSTANCE, "accountId": ACCOUNT, "routingReport": str(report_path),
                 "routingReportSha256": digest, "sourceWriterProof": proof,
                 "sourceTaskArn": report["sourceTaskArn"], "sourceImageDigest": report["sourceImageDigest"],
-                "sourceGraceExpiresAtUtc": report["sourceGraceExpiresAtUtc"],
-                "scope": "ALB configured drain completed; exact SG/ENI/task inventory plus read-only login-writer proof. Final SHARE/admission fence remains mandatory."}
+                "drainMethod": report["drainMethod"], "standaloneStartedBy": report["standaloneStartedBy"],
+                "scope": "All old managed tasks STOPPED after normal ALB drain; exact standalone SG/ENI/task inventory and read-only writer proof. Final SHARE/admission fence remains mandatory."}
     output = WORK / ("routing-attestation-" + str(time.time_ns()) + ".json")
     cutover.write_report(output, evidence)
     config.setdefault("evidence", {})["sourceRouting"] = {"path": str(output), "sha256": hashlib.sha256(output.read_bytes()).hexdigest(),
@@ -184,6 +194,8 @@ def execute(rehearsal_path):
             and config.get("readiness", {}).get("allOtherSourceWritersDisabled") is False,
             "Persistent routing readiness must remain false; pin evidence through accept first")
     reference = config.get("evidence", {}).get("sourceRouting", {})
+    require(reference.get("path") and reference.get("sha256") and reference.get("routingReport")
+            and reference.get("routingReportSha256"), "No usable pinned routing evidence; run accept with a fresh verified report")
     attestation_path = Path(reference["path"])
     require(attestation_path.stat().st_uid == 0 and not attestation_path.stat().st_mode & 0o077,
             "Pinned routing attestation must be private and root-owned")
@@ -198,7 +210,7 @@ def execute(rehearsal_path):
             and attestation["routingReportSha256"] == reference["routingReportSha256"],
             "Pinned routing report references disagree")
     report = checked_report(Path(reference["routingReport"]), reference["routingReportSha256"])
-    require(all(attestation.get(key) == report.get(key) for key in ("sourceTaskArn", "sourceImageDigest", "sourceGraceExpiresAtUtc"))
+    require(all(attestation.get(key) == report.get(key) for key in ("sourceTaskArn", "sourceImageDigest", "drainMethod", "standaloneStartedBy"))
             and reference.get("sourceTaskArn") == report["sourceTaskArn"]
             and reference.get("sourceImageDigest") == report["sourceImageDigest"], "Source task evidence changed")
     proof = snapshot(report["sourcePrivateIp"])
@@ -215,10 +227,21 @@ def execute(rehearsal_path):
     cutover.write_report(output, {"status": "SOURCE_ROUTING_EXECUTION_REVALIDATED",
         "capturedAtUtc": datetime.now(timezone.utc).isoformat(), "instanceId": INSTANCE,
         "routingReportSha256": reference["routingReportSha256"], "attestationSha256": reference["sha256"],
-        "sourceTaskArn": report["sourceTaskArn"], "sourceGraceExpiresAtUtc": report["sourceGraceExpiresAtUtc"],
+        "sourceTaskArn": report["sourceTaskArn"], "drainMethod": report["drainMethod"],
+        "standaloneStartedBy": report["standaloneStartedBy"],
         "coordinatorSha256": actual_hash, "sourceWriterProof": proof, "persistentRoutingFlags": False})
     result = cutover.cutover(config, cutover.Runner(config), rehearsal_path)
     return {**result, "routingExecutionProof": str(output), "coordinatorSha256": actual_hash}
+
+
+def invalidate(source_ip):
+    result = snapshot(source_ip)
+    config = json.loads(CONFIG.read_text())
+    config["readiness"]["oldAlbRequestsDrained"] = False
+    config["readiness"]["allOtherSourceWritersDisabled"] = False
+    config.setdefault("evidence", {}).pop("sourceRouting", None)
+    private_atomic(CONFIG, (json.dumps(config, indent=2) + "\n").encode())
+    return {**result, "status": "SOURCE_ROUTING_READINESS_INVALIDATED"}
 
 
 def main():
@@ -241,14 +264,10 @@ def main():
                 result = accept(args.routing_report, args.sha256)
             elif args.command == "execute":
                 result = execute(args.rehearsal)
+            elif args.command == "invalidate":
+                result = invalidate(args.source_private_ip)
             else:
                 result = snapshot(args.source_private_ip)
-                if args.command == "invalidate":
-                    config = json.loads(CONFIG.read_text())
-                    config["readiness"]["oldAlbRequestsDrained"] = False
-                    config["readiness"]["allOtherSourceWritersDisabled"] = False
-                    private_atomic(CONFIG, (json.dumps(config, indent=2) + "\n").encode())
-                    result["status"] = "SOURCE_ROUTING_READINESS_INVALIDATED"
         print(json.dumps(result))
         return 0
     except Exception as error:

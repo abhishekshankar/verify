@@ -134,3 +134,67 @@ ALB and exclusive NAT are gone, the target dependencies remain, backup/recovery
 read access is permanent, and the domain reaches the target. Report the actual
 remaining baseline and backup/traffic charges separately from temporary retained
 source-backup storage.
+
+## Guarded CloudShell source retirement
+
+`retire_source.py` deliberately excludes DNS and network deletion. Its separate
+`recovery-read` command can run before cutover: it backs up the exact target role,
+policies and parameter/key metadata, then adds `VerifyRecoveryReadOnly` with only
+the four exact `ssm:GetParameter` resources and context-bound decrypt access to
+their observed enabled KMS keys. It adds no writes and does not remove temporary
+grants. This makes recovery reads permanent before the temporary grant expires.
+
+```sh
+python3 retire_source.py recovery-read
+```
+
+After the full post-backup target proof, upload its exact private JSON bytes to a
+versioned STANDARD object under `live/verify-ledger/verification/`, recording the
+downloaded SHA256 and VersionId. Download that exact version to a private
+CloudShell file. Use the full report, rather than its short stdout summary:
+
+```sh
+python3 retire_source.py capture --proof-file target-proof.json --proof-sha256 RECORDED_SHA256
+python3 retire_source.py stop-source --proof-file target-proof.json --proof-sha256 RECORDED_SHA256
+```
+
+Require `SOURCE_STANDALONE_STOPPED`; a stop request or `STOPPING` is insufficient.
+The managed service must remain at desired/running/pending zero, with no scaling
+target or unexpected task/source-group ENI. Every mutation also requires a fresh
+read-only SSM check of TARGET authority, actual runtime login and the source fence.
+The full proof must remain at most five minutes old; refresh and transfer it when
+needed. Its exact permanent recovery policy is rechecked before each destructive
+step. The initial source RDS/automated history, service/task definition, exact
+standalone and target identities are backed up before any source deletion.
+
+```sh
+python3 retire_source.py delete-rds --proof-file target-proof.json --proof-sha256 RECORDED_SHA256
+```
+
+If source deletion protection is still enabled, this call only requests its
+removal. Recheck the available database and rerun with fresh proof. The exact
+source `DbiResourceId`, endpoint, KMS key, seven-day retention and absence of
+cluster/read-replica dependencies must match. The delete request explicitly uses
+`DeleteAutomatedBackups=False` and `SkipFinalSnapshot=True`; its preconditions
+require the verified final dump, independently recoverable four credentials,
+tested target recovery and completed post-cutover full backup. No additional
+indefinitely retained manual RDS snapshot is created.
+
+```sh
+python3 retire_source.py status
+```
+
+Require `VERIFY_SOURCE_TASK_AND_RDS_RETIRED`, whose versioned journal reports the
+exact retained restore window, saved KMS key, stopped source and preserved target
+resources. Missing/deleting RDS is not enough: retained automated history must be
+visible under the pinned `DbiResourceId`, and its key must still be enabled.
+An uncertain delete response is observed through `status`; it never authorizes
+deleting a replacement database that reuses the old identifier. If a successful
+S3 state update outlived a local interruption, `sync-state` only restores that
+exact operation's private checkpoint; it performs no retirement action.
+
+Run the source-free target proof after this result. Remove temporary source-secret
+reads and parameter writes only after the exact permanent read policy and actual
+decryption are verified. The helper retains the original zero-capacity ECS service
+definition and all networking for the separate consumer/automation review. Its
+journal is an input to that review, not permission to destroy the shared stack.

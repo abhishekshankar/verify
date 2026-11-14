@@ -86,7 +86,7 @@ jobs:
       - name: Hosted ledger tests
         run: PYTHONPATH=src:. python3 -m unittest hosted.test_hosted -v
       - name: Migration safety tests
-        run: PYTHONPATH=src:. python3 -m unittest hosted.lightsail.test_safety hosted.lightsail.test_import_data hosted.lightsail.test_migration_proxy hosted.lightsail.test_cutover hosted.lightsail.test_prepare_bridge hosted.lightsail.test_route_source_bridge hosted.lightsail.test_standalone_source hosted.lightsail.test_route_standalone_source hosted.lightsail.test_live_target hosted.lightsail.test_ssm_migration_glue -v
+        run: PYTHONPATH=src:. python3 -m unittest hosted.lightsail.test_safety hosted.lightsail.test_import_data hosted.lightsail.test_migration_proxy hosted.lightsail.test_cutover hosted.lightsail.test_prepare_bridge hosted.lightsail.test_route_source_bridge hosted.lightsail.test_standalone_source hosted.lightsail.test_route_standalone_source hosted.lightsail.test_live_target hosted.lightsail.test_ssm_migration_glue hosted.lightsail.test_retire_source -v
       - name: Validate shipped contracts
         run: PYTHONPATH=src python3 -m verify validate contracts/*.json
       - name: CLI smoke

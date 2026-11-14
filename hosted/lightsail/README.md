@@ -115,42 +115,67 @@ Attach the bridge target group to a temporary HTTP health rule and observe it
 healthy before moving the HTTPS default action. An unattached target group stays
 unused; creating it alone does not prove readiness to receive HTTPS traffic.
 
-Use the standalone CloudShell `route_source_bridge.py inventory` command before
-changing HTTPS forwarding. It verifies the exact source task, image, interface,
-database, security-group rules and every interface allowed by those rules. It
-also verifies both new target groups, trusted target TLS, and a private target
-snapshot of the actual source login writers and bridge state.
+The former `route_source_bridge.py handover` and `verify` commands are retired
+and fail closed. During the live rehearsal, ECS replaced a manually deregistered
+service task because it remained deregistered too long, despite the extended
+health grace. The original healthy source route was restored before any database
+cutover. Health grace is not a guarantee that ECS will preserve a manually
+removed service target.
 
-`handover` saves the prior registration, routing and ECS health grace as encrypted
-versioned S3 evidence before changing them. It extends only the existing task's
-health grace to cover its current age plus two hours, verifies that no deployment
-or task changed, and routes the bridge at weight 100 with the original source at
-weight 0 and target-group stickiness disabled. Then it explicitly deregisters the
-old ALB target. It preserves the original deregistration delay and returns while
-the SOURCE application continues running. `verify` is a separate, repeatable
-command: it reports PENDING until the full delay has elapsed, the old registration
-is absent, and the explicit AWS reason is `Target.NotRegistered`. Merely seeing
-`Target.NotInUse`, waiting an arbitrary interval, or finding missing CloudWatch
-metrics does not satisfy this check. Every current ALB address must then return
-the bridge's distinct health response through trusted HTTPS.
+The corrected CloudShell `route_standalone_source.py inventory` performs the
+read-only baseline checks. Its `start` command starts a temporary **standalone ECS task** using the exact
+existing task definition, immutable image digest, private network and source
+secret references. It checks that the task has no ECS service controller or ALB
+registration. The original managed service continues serving public requests
+while the standalone task is started and checked against the same source RDS.
+Run `ready` once it is running to produce the private versioned readiness report.
 
-AWS documents that updating the health grace does not start a deployment in the
-[UpdateService API reference](https://docs.aws.amazon.com/AmazonECS/latest/APIReference/API_UpdateService.html).
-The configured wait and target deregistration behavior follow the
-[ALB deregistration documentation](https://docs.aws.amazon.com/elasticloadbalancing/latest/application/edit-target-group-attributes.html#deregistration-delay).
+Transfer the exact versioned `STANDALONE_SOURCE_TASK_READY` report and its
+independently recorded SHA-256 to a private target file. Run the target's
+`prepare_standalone_source prepare --ready-report <file> --sha256 <digest>` using
+the application interpreter. Under the cutover lock, it proves SOURCE/no target
+writer, checks the actual private standalone API, and allows database sessions
+only from the exact managed and standalone source IPs. It clears all stale drain
+evidence and repoints/restarts only an idle bridge while public traffic still
+uses the healthy managed source. The separate `transition` command is read-only
+and confirms this exact bridge/backend/database relationship.
 
-The evidence states that ALB completed its configured connection drain. It does
-not claim source-container socket visibility or guarantee completion of requests
-that exceed that configured drain. The source database SHARE/admission fence
-remains mandatory. The bridge stays SOURCE throughout these checks. Caddy and the
-bridge must remain enabled so their configuration survives restart.
+The CloudShell adapter's `handover` command then routes HTTPS to the healthy bridge at
+weight 100, with the old source target group at weight 0 and stickiness disabled.
+It scales the original managed service to desired count zero and lets ECS perform
+its normal configured ALB drain and task shutdown. It never manually deregisters
+the source task or changes health grace. SOURCE keeps serving from the independent
+standalone task throughout this wait.
+Run its separate `verify` command after the original drain interval; it returns
+PENDING while managed tasks or old target registrations remain.
 
-Before target activation, `rollback` first invalidates target routing readiness
-and keeps the healthy SOURCE bridge serving while it re-registers the old target.
-It waits for that target to become healthy before restoring the original HTTPS
-action, then restores the old ECS health grace last. It refuses to act if the
-target has been activated or the SOURCE proof is uncertain. After successful
-cutover, retire the old ECS service; do not use routing rollback to a stale source.
+The final routing report must prove all of the following: original service
+desired/running/pending counts zero; every observed old managed task `STOPPED`;
+full unchanged target-group drain interval elapsed; all old targets explicitly
+`Target.NotRegistered`; the exact standalone task still running; and all database
+client security groups/interfaces accounted for. Every current ALB address must
+reach the bridge over trusted HTTPS. Missing metrics, an elapsed timer alone,
+`STOPPING`, or generic `Target.NotInUse` cannot satisfy this barrier. The actual
+source writer snapshot must now contain only the standalone task's IP.
+
+`attest_source_route accept` rejects the retired drain method. Its fresh pinned
+report must identify `ECS_SERVICE_STOPPED_STANDALONE_SOURCE`; `execute` rechecks
+that report, the actual SOURCE state and the exact coordinator checksum under the
+same lock before invoking the unchanged coordinator. All old managed processes
+are stopped before the final snapshot, and the coordinator's database SHARE and
+admission fences remain mandatory.
+
+Before TARGET is attempted, `rollback-start` keeps the healthy standalone SOURCE bridge
+serving while the original managed service is restored to desired count one. Wait
+for its actual replacement task and ALB target to be healthy before restoring the
+saved public source action through `rollback-finish`. Repoint an idle bridge to that reviewed managed task
+before stopping the standalone backend. Never restore a stale source route after
+TARGET activation. Caddy and the bridge remain enabled across restarts.
+
+AWS describes health grace in its
+[UpdateService API reference](https://docs.aws.amazon.com/AmazonECS/latest/APIReference/API_UpdateService.html)
+and normal draining in its
+[ALB target deregistration documentation](https://docs.aws.amazon.com/elasticloadbalancing/latest/application/edit-target-group-attributes.html#deregistration-delay).
 
 ## Private coordinator configuration
 
@@ -190,8 +215,8 @@ The JSON fields are:
 Populate readiness from observed evidence. The two external routing fields stay
 **false on disk**: `attest_source_route.py accept` pins the exact checked CloudShell
 report and its digest, then `execute` rechecks both report and attestation digests,
-their five-minute freshness, at least ten minutes of remaining ECS health grace,
-and a new read-only source writer snapshot. Only that locked process sets the two
+their five-minute freshness, the stopped managed tasks and running standalone
+backend, and a new read-only source writer snapshot. Only that locked process sets the two
 fields true in memory for the unchanged coordinator body. Stale evidence can never
 leave persistent true flags that remain usable later. These are technical checks,
 not requests for another user approval. The operator must account for tenant
@@ -269,6 +294,9 @@ Its bounded queue is not a guarantee that every client has a sufficiently long
 timeout. Inspect queue timeout counts and application responses after the switch.
 
 ## Finish the migration
+
+Follow [POST_CUTOVER.md](POST_CUTOVER.md) for the read-only live proof, completed
+post-cutover backup gate, exact dependency checks and source-free recovery steps.
 
 Validate the live application, backups, service enablement, memory headroom and
 certificate renewal. Then update DNS to the verified stable target IP. Keep the

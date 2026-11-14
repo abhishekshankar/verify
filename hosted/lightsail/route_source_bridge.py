@@ -1,26 +1,19 @@
 #!/usr/bin/env python3
-"""Guarded CloudShell SOURCE handover, ALB connection drain, and rollback evidence.
+"""Historical source inventory/recovery utilities; old handover is retired.
 
-This script never changes DNS, database data/admission, application writer state,
-source desiredCount, task definitions, or source images. It temporarily extends
-the existing ECS task's health grace without a deployment, routes new HTTPS calls
-through the healthy SOURCE bridge, and explicitly deregisters the old ALB target
-using its unchanged delay. verify returns PENDING until AWS reports deregistration
-complete. Every operation is bound to this exact pilot and versioned S3 evidence.
-
-Run handover once, then verify after the configured drain. Rollback is permitted
-only while the target independently proves SOURCE and has no writer marker.
-Rollback re-registers and waits for a healthy old target before restoring routing
-and then grace. It never unfences a database or restores a stale source.
+Manual target deregistration caused ECS to replace the source task despite its
+extended health grace. handover and verify now fail unconditionally. Use the
+reviewed standalone-source adapter and a normal managed-service STOPPED barrier.
+Existing read-only inventory/format/network helpers remain reusable. Original-task
+rollback is retained only for its strict same-task, pre-TARGET recovery case.
 """
 import argparse
 import base64
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 import fcntl
 import hashlib
 import http.client
 import json
-import math
 import os
 from pathlib import Path
 import shlex
@@ -28,7 +21,6 @@ import socket
 import ssl
 import tempfile
 import time
-import uuid
 
 ACCOUNT = "842676017161"
 REGION = "us-west-2"
@@ -377,133 +369,10 @@ class Operation:
                 "albDnsName": load["DNSName"], "sourceDeregistrationDelay": delay, "targetTls": external}
 
     def handover(self):
-        inventory = self.inventory()
-        proof = self.target_proof()
-        bridge = inventory["bridgeTargetGroup"]
-        if STATE.exists():
-            state = json.loads(STATE.read_text())
-            require(state.get("accountId") == ACCOUNT and state.get("instanceId") == INSTANCE
-                    and state.get("phase") != "ROLLED_BACK", "Existing routing state needs review")
-            self.stable_task(state)
-        else:
-            forwarded, sticky = targets(inventory["httpsActions"])
-            require(forwarded == {SOURCE_TG: 1} and not sticky, "Initial HTTPS routing is not exclusively the old source")
-            registrations = self.clients["elbv2"].describe_target_health(TargetGroupArn=SOURCE_TG)["TargetHealthDescriptions"]
-            require(len(registrations) == 1 and registrations[0]["Target"]["Id"] == SOURCE_IP
-                    and registrations[0]["Target"]["Port"] == 8080 and registrations[0]["TargetHealth"]["State"] == "healthy",
-                    "Original source registration is not exactly the healthy observed task")
-            age = (datetime.now(timezone.utc) - datetime.fromisoformat(inventory["task"]["startedAt"])).total_seconds()
-            require(0 <= age < 2147476000, "Source task age is invalid")
-            grace = max(inventory["task"]["healthCheckGracePeriodSeconds"], math.ceil(age) + 7200)
-            state = {"schemaVersion": 1, "token": uuid.uuid4().hex[:12], "accountId": ACCOUNT, "instanceId": INSTANCE,
-                     "phase": "BEFORE_SAVED", "createdAtUtc": now(), "before": inventory,
-                     "originalRegistrations": registrations, "sourceGateBefore": proof, "migrationGraceSeconds": grace,
-                     "bridgeTargetGroup": bridge, "acmeTargetGroup": inventory["acmeTargetGroup"]}
-            self.save(state)  # Durable, encrypted, versioned evidence precedes every mutation.
-        require(state["bridgeTargetGroup"] == bridge and inventory["sourceDeregistrationDelay"] == state["before"]["sourceDeregistrationDelay"],
-                "Routing identity or original drain delay changed")
-        if state["phase"] in ("DRAINING", "DRAIN_VERIFIED"):
-            return self.verify(state)
-        task = self.stable_task(state)
-        old_grace = state["before"]["task"]["healthCheckGracePeriodSeconds"]
-        require(task["healthCheckGracePeriodSeconds"] in (old_grace, state["migrationGraceSeconds"]), "Source grace changed independently")
-        if task["healthCheckGracePeriodSeconds"] != state["migrationGraceSeconds"]:
-            state["graceChangeAttemptedAtUtc"] = now()
-            self.save(state)
-            self.clients["ecs"].update_service(cluster="verify-ledger", service="verify-ledger",
-                                               healthCheckGracePeriodSeconds=state["migrationGraceSeconds"])
-        task = self.stable_task(state)
-        require(task["healthCheckGracePeriodSeconds"] == state["migrationGraceSeconds"], "Migration health grace was not applied")
-        state["phase"], state["graceVerifiedAtUtc"] = "GRACE_VERIFIED", now()
-        self.save(state)
-        self.target_proof()
-        current, _ = self.rules(bridge, state["acmeTargetGroup"])
-        forwarded, sticky = targets(current["DefaultActions"])
-        wanted = {bridge: 100, SOURCE_TG: 0}
-        if forwarded != wanted or sticky:
-            require(forwarded == {SOURCE_TG: 1} and not sticky, "HTTPS routing changed independently")
-            state["routeChangeAttemptedAtUtc"] = now()
-            self.save(state)
-            self.clients["elbv2"].modify_listener(ListenerArn=HTTPS, DefaultActions=[{"Type": "forward", "ForwardConfig": {
-                "TargetGroups": [{"TargetGroupArn": bridge, "Weight": 100}, {"TargetGroupArn": SOURCE_TG, "Weight": 0}],
-                "TargetGroupStickinessConfig": {"Enabled": False}}}])
-        self.stable_task(state)
-        current, _ = self.rules(bridge, state["acmeTargetGroup"])
-        require(targets(current["DefaultActions"]) == (wanted, False), "SOURCE bridge HTTPS forwarding was not confirmed")
-        state["phase"], state["sourceBridgeRoutedAtUtc"] = "ROUTED_SOURCE", now()
-        self.save(state)
-        self.target_proof()
-        self.stable_task(state)
-        state["deregistrationAttemptedAtUtc"] = now()
-        self.save(state)
-        self.clients["elbv2"].deregister_targets(TargetGroupArn=SOURCE_TG, Targets=[EXPECTED_TARGET])
-        state["phase"], state["deregistrationAcknowledgedAtUtc"] = "DRAINING", now()
-        self.save(state)
-        self.stable_task(state)
-        return {"status": "SOURCE_BRIDGE_ROUTED_DRAIN_STARTED", "state": str(STATE), "token": state["token"],
-                "configuredDrainSeconds": state["before"]["sourceDeregistrationDelay"],
-                "sourceTaskArn": state["before"]["task"]["taskArn"], "sourceRunningCount": 1,
-                "next": "Run verify after the unchanged configured deregistration delay; SOURCE remains authoritative."}
+        raise Blocked("Retired manual-deregistration method: ECS replaces deregistered service tasks despite health grace. Use the reviewed standalone-source service-stop adapter.")
 
     def verify(self, state=None):
-        state = state or json.loads(STATE.read_text())
-        require(state["phase"] in ("DRAINING", "DRAIN_VERIFIED"), "No initiated source deregistration to verify")
-        inventory = self.inventory()
-        task = self.stable_task(state)
-        require(task["healthCheckGracePeriodSeconds"] == state["migrationGraceSeconds"], "Temporary source grace changed")
-        elapsed_age = (datetime.now(timezone.utc) - datetime.fromisoformat(task["startedAt"])).total_seconds()
-        require(state["migrationGraceSeconds"] - elapsed_age > 600, "Migration grace is nearly exhausted; recover before proceeding")
-        wanted = {state["bridgeTargetGroup"]: 100, SOURCE_TG: 0}
-        require(targets(inventory["httpsActions"]) == (wanted, False), "A live HTTPS route bypasses the SOURCE bridge")
-        delay = state["before"]["sourceDeregistrationDelay"]
-        require(inventory["sourceDeregistrationDelay"] == delay, "Original ALB drain delay changed")
-        elapsed = (datetime.now(timezone.utc) - datetime.fromisoformat(state["deregistrationAcknowledgedAtUtc"])).total_seconds()
-        lb = self.clients["elbv2"]
-        registered = lb.describe_target_health(TargetGroupArn=SOURCE_TG)["TargetHealthDescriptions"]
-        explicit = lb.describe_target_health(TargetGroupArn=SOURCE_TG, Targets=[EXPECTED_TARGET])["TargetHealthDescriptions"]
-        require(len(explicit) == 1, "Explicit old-target deregistration state missing")
-        old_health = explicit[0]["TargetHealth"]
-        if registered or elapsed < delay or old_health.get("Reason") != "Target.NotRegistered":
-            return {"status": "SOURCE_DRAIN_PENDING", "elapsedSeconds": elapsed, "configuredDelaySeconds": delay,
-                    "registeredTargets": registered, "explicitTargetState": old_health,
-                    "state": str(STATE), "sourceTaskUnchanged": True}
-        proof = self.target_proof()
-        addresses = sorted({row[4][0] for row in socket.getaddrinfo(inventory["albDnsName"], 443, type=socket.SOCK_STREAM)})
-        require(addresses and len(addresses) <= 8, "Unexpected ALB resolved addresses")
-        probes = []
-        for address in addresses:
-            health, body = tls_request(address, "/__migration_health")
-            require(health["status"] == 200 and json.loads(body) == {"service": "migration-bridge", "ok": True},
-                    "A currently resolved ALB node does not reach the SOURCE bridge")
-            api, body = tls_request(address, "/v1/verify-chain")
-            require(api["status"] == 401 and body.startswith(b'{"error":'), "A public ALB node API behavior differs")
-            probes.extend([health, api])
-        self.stable_task(state)
-        report = {"schemaVersion": 1, "status": "SOURCE_HTTP_DRAIN_AND_WRITER_NETWORK_VERIFIED",
-                  "capturedAtUtc": now(), "token": state["token"], "accountId": ACCOUNT, "instanceId": INSTANCE,
-                  "sourceHost": SOURCE_HOST, "sourcePrivateIp": SOURCE_IP, "targetPrivateIp": TARGET_IP,
-                  "sourceTaskArn": task["taskArn"], "sourceImageDigest": SOURCE_IMAGE, "sourceTaskRunningCount": 1,
-                  "sourceGraceExpiresAtUtc": (datetime.fromisoformat(task["startedAt"]) + timedelta(seconds=state["migrationGraceSeconds"])).isoformat(),
-                  "sourceGraceRemainingSeconds": state["migrationGraceSeconds"] - elapsed_age,
-                  "bridgeTargetGroup": state["bridgeTargetGroup"], "sourceTargetGroup": SOURCE_TG,
-                  "drain": {"explicitDeregistrationRequested": True, "configuredDelaySeconds": delay,
-                      "elapsedSeconds": elapsed, "originalDelayUnchanged": True, "targetAbsentFromRegisteredList": True,
-                      "explicitTargetReason": old_health["Reason"], "explicitTargetState": old_health["State"],
-                      "requestedAtUtc": state["deregistrationAttemptedAtUtc"], "acknowledgedAtUtc": state["deregistrationAcknowledgedAtUtc"]},
-                  "routing": {"positiveWeightTargetGroups": [state["bridgeTargetGroup"]], "sourceTargetGroupWeight": 0,
-                      "targetGroupStickinessEnabled": False, "allResolvedAlbAddressesReachBridge": True,
-                      "allListenersAndRulesReviewed": True, "observedActions": inventory["httpsActions"],
-                      "albProbes": probes, "targetTls": inventory["targetTls"]},
-                  "writerNetwork": {"databaseClientGroups": inventory["databaseClientGroups"],
-                      "allPeerInterfacesMatched": True, "noCidrOrPrefixDatabaseAccess": True,
-                      "sourceDatabasePrivate": True, "sourceTaskIdentityUnchanged": True,
-                      "networkInventory": inventory}, "sourceWriterProof": proof,
-                  "scope": "ALB completed its unchanged configured connection drain; SOURCE application stays running. No socket-level or zero-error guarantee is claimed; final database writer fence remains required."}
-        location = self.save(report, "verify-source-routing-evidence.json")
-        state["phase"], state["drainVerifiedAtUtc"], state["routingEvidence"] = "DRAIN_VERIFIED", now(), location
-        self.save(state)
-        return {"status": report["status"], "report": str(ROOT / "verify-source-routing-evidence.json"),
-                "evidenceObject": location, "sourceTaskUnchanged": True, "sourceRunningCount": 1}
+        raise Blocked("Retired manual-deregistration evidence cannot authorize cutover. Require stopped managed tasks and an independently running standalone SOURCE backend.")
 
     def rollback(self):
         state = json.loads(STATE.read_text())

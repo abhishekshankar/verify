@@ -124,13 +124,16 @@ class TargetReadinessEvidence(unittest.TestCase):
                 "capturedAtUtc": datetime.now(timezone.utc).isoformat(), "accountId": route.ACCOUNT,
                 "instanceId": route.INSTANCE, "sourceHost": route.SOURCE_HOST,
                 "sourcePrivateIp": route.SOURCE_IP, "targetPrivateIp": route.TARGET_IP,
-                "sourceTaskArn": "verified-task", "sourceImageDigest": route.SOURCE_IMAGE,
+                "sourceTaskArn": "verified-standalone-task", "sourceImageDigest": route.SOURCE_IMAGE,
                 "sourceTaskRunningCount": 1, "bridgeTargetGroup": "bridge",
-                "sourceGraceExpiresAtUtc": (datetime.now(timezone.utc) + timedelta(minutes=30)).isoformat(),
-                "sourceGraceRemainingSeconds": 1800,
-                "drain": {"explicitDeregistrationRequested": True, "originalDelayUnchanged": True,
+                "drainMethod": "ECS_SERVICE_STOPPED_STANDALONE_SOURCE", "sourceBackendKind": "standalone",
+                "singleStandaloneRunning": True, "sourceTaskGroup": "family:verify-ledger",
+                "standaloneStartedBy": "verify-migration-test", "originalServiceDesiredCount": 0,
+                "originalServiceRunningCount": 0, "originalServicePendingCount": 0,
+                "oldServiceTasks": [{"taskArn": "old-managed-task", "lastStatus": "STOPPED"}],
+                "drain": {"serviceScaleDownRequested": True, "originalDelayUnchanged": True,
                           "elapsedSeconds": 301, "configuredDelaySeconds": 300,
-                          "targetAbsentFromRegisteredList": True, "explicitTargetReason": "Target.NotRegistered"},
+                          "targetAbsentFromRegisteredList": True, "allOldTargetsNotRegistered": True},
                 "routing": {"positiveWeightTargetGroups": ["bridge"], "sourceTargetGroupWeight": 0,
                             "targetGroupStickinessEnabled": False, "allResolvedAlbAddressesReachBridge": True,
                             "allListenersAndRulesReviewed": True},
@@ -160,10 +163,10 @@ class TargetReadinessEvidence(unittest.TestCase):
         self.assertFalse(config["readiness"]["oldAlbRequestsDrained"])
         self.assertFalse(config["readiness"]["allOtherSourceWritersDisabled"])
 
-    def test_unused_is_not_accepted_as_completed_deregistration(self):
+    def test_stopped_task_is_not_enough_without_completed_deregistration(self):
         from hosted.lightsail.cutover import Blocked
         value = self.evidence()
-        value["drain"]["explicitTargetReason"] = "Target.NotInUse"
+        value["drain"]["allOldTargetsNotRegistered"] = False
         with self.assertRaises(Blocked):
             self.invoke(value)
 
@@ -172,11 +175,22 @@ class TargetReadinessEvidence(unittest.TestCase):
         with self.assertRaises(Blocked):
             self.invoke(self.evidence(), supplied_digest="0" * 64)
 
-    def test_expired_or_nearly_exhausted_grace_cannot_be_pinned(self):
-        from datetime import datetime, timedelta, timezone
+    def test_retired_manual_deregistration_evidence_cannot_be_pinned(self):
         from hosted.lightsail.cutover import Blocked
         value = self.evidence()
-        value["sourceGraceExpiresAtUtc"] = (datetime.now(timezone.utc) + timedelta(seconds=30)).isoformat()
+        value["drainMethod"] = "MANUAL_DEREGISTRATION_WITH_HEALTH_GRACE"
+        with self.assertRaises(Blocked):
+            self.invoke(value)
+
+    def test_stopping_managed_task_or_pending_replacement_cannot_be_pinned(self):
+        from hosted.lightsail.cutover import Blocked
+        for field in ("originalServiceDesiredCount", "originalServiceRunningCount", "originalServicePendingCount"):
+            value = self.evidence()
+            value[field] = 1
+            with self.subTest(field=field), self.assertRaises(Blocked):
+                self.invoke(value)
+        value = self.evidence()
+        value["oldServiceTasks"][0]["lastStatus"] = "STOPPING"
         with self.assertRaises(Blocked):
             self.invoke(value)
 
@@ -196,7 +210,7 @@ class TargetReadinessEvidence(unittest.TestCase):
                    "capturedAtUtc": (datetime.now(timezone.utc) - timedelta(seconds=301 if expired else 0)).isoformat(),
                    "routingReport": str(report_path), "routingReportSha256": report_hash,
                    "sourceTaskArn": report["sourceTaskArn"], "sourceImageDigest": report["sourceImageDigest"],
-                   "sourceGraceExpiresAtUtc": report["sourceGraceExpiresAtUtc"]}
+                   "drainMethod": report["drainMethod"], "standaloneStartedBy": report["standaloneStartedBy"]}
             pin_path.write_text(json.dumps(pin))
             pin_path.chmod(0o600)
             pin_hash = hashlib.sha256(pin_path.read_bytes()).hexdigest()
@@ -247,6 +261,29 @@ class TargetReadinessEvidence(unittest.TestCase):
         from hosted.lightsail.cutover import Blocked
         with self.assertRaises(Blocked):
             self.execute_fixture(tampered=True)
+
+    def test_invalidation_removes_the_pin_so_false_flags_cannot_reuse_it(self):
+        from hosted.lightsail import attest_source_route as attestation
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory) / "config.json"
+            config.write_text(json.dumps({"readiness": {"oldAlbRequestsDrained": False, "allOtherSourceWritersDisabled": False},
+                                          "evidence": {"sourceRouting": {"path": "previously-valid-pin"}}}))
+            with patch.object(attestation, "CONFIG", config), patch.object(attestation, "snapshot", return_value={}), \
+                    patch.object(attestation.cutover, "cutover") as coordinator:
+                attestation.invalidate("10.40.11.37")
+                self.assertNotIn("sourceRouting", json.loads(config.read_text())["evidence"])
+                with self.assertRaises(attestation.cutover.Blocked):
+                    attestation.execute(Path(directory) / "rehearsal.json")
+                coordinator.assert_not_called()
+
+
+class RetiredMethod(unittest.TestCase):
+    def test_manual_deregistration_never_reaches_aws(self):
+        operation = route.Operation.__new__(route.Operation)
+        with self.assertRaises(route.Blocked):
+            operation.handover()
+        with self.assertRaises(route.Blocked):
+            operation.verify()
 
 
 if __name__ == "__main__":

@@ -557,8 +557,10 @@ class Operation:
             if bridge_expected:
                 require(health['status']==200 and json.loads(body)=={'service':'migration-bridge','ok':True},
                         'An ALB node does not reach the exact migration bridge health endpoint')
-            else:require(health['status']==404,'Original source ALB unexpectedly reaches the migration bridge')
-            api,body=tls_request(address,'/v1/verify-chain');require(api['status']==401 and body.startswith(b'{"error":'),'Source API TLS probe failed')
+            else:
+                require(health['status']==401 and json.loads(body)=={'error':'missing or invalid API key'},
+                        'Original source ALB does not return the observed unauthenticated source signature')
+            api,body=tls_request(address,'/v1/verify-chain');require(api['status']==401 and json.loads(body)=={'error':'missing or invalid API key'},'Source API TLS signature differs')
             responses.append({'health':health,'api':api})
         return responses
 

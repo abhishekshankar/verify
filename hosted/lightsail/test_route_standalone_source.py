@@ -4,6 +4,7 @@ from datetime import datetime,timedelta,timezone
 import importlib.util
 from pathlib import Path
 import tempfile
+import sys
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
@@ -78,6 +79,20 @@ class SafetyTests(unittest.TestCase):
     def test_dns_proof_checks_all_current_alb_nodes(self):
         with patch.object(r.socket,'gethostbyname_ex',side_effect=[('test.elb.amazonaws.com',[r.HOSTNAME],['1.2.3.4']),('test.elb.amazonaws.com',[],['1.2.3.4','5.6.7.8'])]):
             self.assertEqual(r.public_source_dns('test.elb.amazonaws.com')['addresses'],['1.2.3.4','5.6.7.8'])
+    def test_real_source_authentication_order_is_401_on_unknown_health_path(self):
+        candidates=[Path(__file__).resolve().parent/'verify-ledger-migration',Path(__file__).resolve().parents[2]]
+        repo=next(p for p in candidates if (p/'hosted/server.py').is_file())
+        with patch.object(sys,'path',[str(repo/'src'),str(repo)]+sys.path):
+            from hosted.server import handle
+            class NoDatabaseAccess:
+                def __getattr__(self,name):raise AssertionError('Unauthenticated probe must not touch database: '+name)
+            status,headers,body=handle(NoDatabaseAccess(),'GET','/__migration_health',{}, {},b'', 'fixture-export-key')
+            self.assertEqual(status,401)
+            with patch.object(r,'tls_request',return_value=({'status':status},body)):
+                op=object.__new__(r.Operation)
+                self.assertEqual(len(op.probe_alb({'publicDns':{'addresses':['1.2.3.4']}},False)),1)
+            with patch.object(r,'tls_request',return_value=({'status':200},b'{"service":"migration-bridge","ok":true}')):
+                with self.assertRaises(r.Blocked):op.probe_alb({'publicDns':{'addresses':['1.2.3.4']}},False)
     def test_bridge_probe_rejects_generic_200(self):
         op=object.__new__(r.Operation)
         with patch.object(r,'tls_request',return_value=({'status':200},b'{"ok":true}')):

@@ -1,0 +1,17 @@
+.terraform/
+*.tfstate*
+*.tfplan
+*.tfvars
+*.tfvars.json
+source*.json
+*-gate.json
+*-audit.json
+*.dump
+*.tar*
+*.pem
+*.key
+*.pgpass
+pg_service.conf
+private/
+host/app.env
+host/pgbackrest.conf

@@ -1,0 +1,24 @@
+# NEW EC2 TARGET ONLY. Root:postgres 0640. Replace placeholders privately.
+# Instance profile must be scoped to this backup bucket/prefix and use IMDSv2.
+# Save the cipher key independently in an encrypted SSM parameter before backup.
+[verify]
+pg1-path=/var/lib/postgresql/16/main
+pg1-socket-path=/var/run/postgresql
+
+[global]
+repo1-type=s3
+repo1-s3-region=us-west-2
+repo1-s3-endpoint=s3.us-west-2.amazonaws.com
+repo1-s3-bucket=REQUIRED_PRIVATE_BACKUP_BUCKET
+repo1-path=/live/verify-ledger/pgbackrest
+repo1-s3-key-type=auto
+repo1-cipher-type=aes-256-cbc
+repo1-cipher-pass=REQUIRED_INDEPENDENTLY_SAVED_BACKUP_CIPHER_KEY
+repo1-retention-full-type=time
+repo1-retention-full=7
+repo1-bundle=y
+compress-type=gz
+process-max=1
+start-fast=y
+log-level-console=warn
+log-level-file=warn

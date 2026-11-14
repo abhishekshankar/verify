@@ -64,24 +64,29 @@ jobs:
         with: {persist-credentials: false}
       - uses: hashicorp/setup-terraform@v3
         with: {terraform_version: "1.5.7"}
+      - name: Check legacy infrastructure stays disabled
+        run: python3 check_retirement_guard.py
       - run: terraform fmt -check -recursive
       - run: terraform init -backend=false -input=false
       - run: terraform validate
   test:
-    # Only trusted repository code may use the shared AWS runner.
-    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association))
-    runs-on: [self-hosted, Linux, X64, aws, verify]
+    # The shared AWS runner was retired. This job is offline and needs no secrets.
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
       - name: Python version
         run: python3 -c 'import sys; assert sys.version_info >= (3, 10), sys.version; print(sys.version)'
       - name: Offline tests (no Stripe/Zendesk secrets)
         run: PYTHONPATH=src python3 -m unittest discover -s tests -v
       - name: Hosted ledger tests
         run: PYTHONPATH=src:. python3 -m unittest hosted.test_hosted -v
+      - name: Migration safety tests
+        run: PYTHONPATH=src:. python3 -m unittest hosted.lightsail.test_safety hosted.lightsail.test_import_data hosted.lightsail.test_migration_proxy hosted.lightsail.test_cutover hosted.lightsail.test_prepare_bridge -v
       - name: Validate shipped contracts
         run: PYTHONPATH=src python3 -m verify validate contracts/*.json
       - name: CLI smoke
@@ -89,4 +94,4 @@ jobs:
           cd "$RUNNER_TEMP"
           PYTHONPATH="$GITHUB_WORKSPACE/src" python3 -m verify demo local
           PYTHONPATH="$GITHUB_WORKSPACE/src" python3 -m verify ledger demo_out/ledger.db
-          echo 'Offline tests and CLI smoke passed on the shared AWS runner.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Offline tests and CLI smoke passed on the standard GitHub-hosted runner.' >> "$GITHUB_STEP_SUMMARY"

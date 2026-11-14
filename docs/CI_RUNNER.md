@@ -1,16 +1,23 @@
-# Verify CI on the shared AWS runner
+# Verify CI
 
-Verify uses its own repository registration on the existing shared AWS Spot host `i-05dbdc02343b222e6` (us-east-1), the same pattern as KnowCurrent. No new instance was provisioned. Personal-account repositories can't use the organization runner, so each one gets its own registration.
+The shared AWS Spot runner was retired on 2026-11-14. The offline test job now
+uses the standard `ubuntu-latest` GitHub-hosted runner, as do the existing
+PostgreSQL, Docker, Terraform and integration-example jobs. No dedicated AWS
+instance or paid larger runner is requested by this workflow.
 
-- GitHub runner: `verify-aws-i-05dbdc02343b222e6`
-- Labels: `self-hosted`, `Linux`, `X64`, `aws`, `verify`
-- Service: `verify-ci-runner.service`, run as the dedicated user `verify-ci` (no login shell)
-- Install/workspace: `/opt/verify-ci-runner` (runner 2.338.2, copied from the KnowCurrent install without its credential files)
-- Limits: 1 CPU, 1536 MB RAM, Nice 10
-- Sandbox: PrivateTmp, PrivateDevices, ProtectHome, ProtectSystem=strict, NoNewPrivileges, RestrictSUIDSGID; other runner directories are inaccessible; the EC2 metadata endpoint is blocked
+The test job checks the supported Python version, offline application tests,
+hosted ledger tests, migration safety checks, shipped contracts and CLI smoke
+path. It needs no third-party API secrets. Checkout does not persist credentials,
+and workflow permissions remain `contents: read`.
 
-The workflow runs only the offline tests and a CLI smoke test. It has no Stripe or Zendesk secrets, no caches and no artifacts. Checkout doesn't persist credentials. Fork pull requests can't reach this runner.
+Review runs in the repository's **Actions** tab. An account's GitHub Actions
+allowances and any configured spending budget still apply; this change does not
+change a billing plan or increase an account limit.
 
-Registration used a short-lived repository token injected through SSM. It was never printed, and the local script was deleted after dispatch. It still appears in the SSM command history for that invocation; it expired within an hour and was consumed on registration.
+## Historical runner
 
-Status: `gh api repos/abhishekshankar/verify/actions/runners`. Diagnose the service through AWS Systems Manager. If the Spot host is down, jobs wait; don't substitute GitHub-hosted runners.
+The former registration was `verify-aws-i-05dbdc02343b222e6`, on EC2
+`i-05dbdc02343b222e6` in `us-east-1`, with labels `self-hosted`, `Linux`, `X64`,
+`aws`, `verify`. That instance is terminated and its restorable disk archive is
+retained under the separate AWS retirement backup record. Do not point jobs back
+to those labels or recreate the retired host just to run this workflow.

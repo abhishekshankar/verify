@@ -13,6 +13,7 @@ import hashlib, hmac, json, os, secrets, sys, re
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit, parse_qs
 from .store import Conflict, Invalid, open_store
+from .config import secret
 
 MAX_BODY = 5 * 1024 * 1024
 
@@ -55,7 +56,7 @@ def _route(store, tenant, method, path, query, body, export_key):
     return _json(404, {"error": "not found"})
 
 def make_server(store, port=0, export_key=None, host="127.0.0.1"):
-    key = export_key or os.environ.get("VERIFY_EXPORT_KEY")
+    key = export_key or secret("VERIFY_EXPORT_KEY")
     if not key: raise RuntimeError("VERIFY_EXPORT_KEY must be set")
 
     class H(BaseHTTPRequestHandler):

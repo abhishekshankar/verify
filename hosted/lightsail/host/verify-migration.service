@@ -1,0 +1,33 @@
+[Unit]
+Description=Temporary Verify single-writer migration bridge
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=verify-migration
+Group=verify-migration
+WorkingDirectory=/opt/verify/current
+Environment=PYTHONPATH=/opt/verify/current/src:/opt/verify/current
+EnvironmentFile=/etc/verify/migration.env
+ExecStart=/usr/bin/python3 -m hosted.lightsail.migration_proxy serve --source ${VERIFY_MIGRATION_SOURCE}
+Restart=on-failure
+RestartSec=2
+RuntimeDirectory=verify-migration
+RuntimeDirectoryMode=0700
+StateDirectory=verify-migration
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+CapabilityBoundingSet=
+MemoryMax=512M
+TasksMax=96
+
+[Install]
+WantedBy=multi-user.target

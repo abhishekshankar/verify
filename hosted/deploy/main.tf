@@ -1,5 +1,5 @@
-# Verify hosted ledger v0 on AWS. Code only: review, then `terraform apply` yourself.
-# Cost at defaults is roughly an ALB, one small Fargate task and a db.t4g.micro RDS instance.
+# Legacy Verify ECS/RDS/ALB/NAT infrastructure: normal applies are disabled.
+# Preserve addresses/state for recovery; see retirement_guard.tf and README.md.
 terraform {
   required_version = ">= 1.5"
   required_providers {
@@ -21,14 +21,22 @@ locals {
 
 # ---------------- network: 2 public subnets (ALB), 2 private (tasks, RDS) ----------------
 resource "aws_vpc" "this" {
+  depends_on = [terraform_data.legacy_retirement_guard]
+
   cidr_block           = "10.40.0.0/16"
   enable_dns_hostnames = true
   tags                 = { Name = var.name }
 }
 
-resource "aws_internet_gateway" "this" { vpc_id = aws_vpc.this.id }
+resource "aws_internet_gateway" "this" {
+  depends_on = [terraform_data.legacy_retirement_guard]
+
+  vpc_id = aws_vpc.this.id
+}
 
 resource "aws_subnet" "public" {
+  depends_on = [terraform_data.legacy_retirement_guard]
+
   count                   = 2
   vpc_id                  = aws_vpc.this.id
   availability_zone       = local.azs[count.index]
@@ -38,6 +46,8 @@ resource "aws_subnet" "public" {
 }
 
 resource "aws_subnet" "private" {
+  depends_on = [terraform_data.legacy_retirement_guard]
+
   count             = 2
   vpc_id            = aws_vpc.this.id
   availability_zone = local.azs[count.index]
@@ -46,6 +56,8 @@ resource "aws_subnet" "private" {
 }
 
 resource "aws_route_table" "public" {
+  depends_on = [terraform_data.legacy_retirement_guard]
+
   vpc_id = aws_vpc.this.id
   route {
     cidr_block = "0.0.0.0/0"
@@ -54,6 +66,8 @@ resource "aws_route_table" "public" {
 }
 
 resource "aws_route_table_association" "public" {
+  depends_on = [terraform_data.legacy_retirement_guard]
+
   count          = 2
   subnet_id      = aws_subnet.public[count.index].id
   route_table_id = aws_route_table.public.id
@@ -61,14 +75,22 @@ resource "aws_route_table_association" "public" {
 
 # One NAT gateway so private tasks can reach ECR and Secrets Manager.
 # ponytail: single-AZ NAT; add one per AZ if an AZ outage must not stop pulls.
-resource "aws_eip" "nat" { domain = "vpc" }
+resource "aws_eip" "nat" {
+  depends_on = [terraform_data.legacy_retirement_guard]
+
+  domain = "vpc"
+}
 
 resource "aws_nat_gateway" "this" {
+  depends_on = [terraform_data.legacy_retirement_guard]
+
   allocation_id = aws_eip.nat.id
   subnet_id     = aws_subnet.public[0].id
 }
 
 resource "aws_route_table" "private" {
+  depends_on = [terraform_data.legacy_retirement_guard]
+
   vpc_id = aws_vpc.this.id
   route {
     cidr_block     = "0.0.0.0/0"
@@ -77,6 +99,8 @@ resource "aws_route_table" "private" {
 }
 
 resource "aws_route_table_association" "private" {
+  depends_on = [terraform_data.legacy_retirement_guard]
+
   count          = 2
   subnet_id      = aws_subnet.private[count.index].id
   route_table_id = aws_route_table.private.id
@@ -84,6 +108,8 @@ resource "aws_route_table_association" "private" {
 
 # ---------------- security groups ----------------
 resource "aws_security_group" "alb" {
+  depends_on = [terraform_data.legacy_retirement_guard]
+
   name   = "${var.name}-alb"
   vpc_id = aws_vpc.this.id
   ingress {
@@ -101,6 +127,8 @@ resource "aws_security_group" "alb" {
 }
 
 resource "aws_security_group" "task" {
+  depends_on = [terraform_data.legacy_retirement_guard]
+
   name   = "${var.name}-task"
   vpc_id = aws_vpc.this.id
   ingress {
@@ -118,6 +146,8 @@ resource "aws_security_group" "task" {
 }
 
 resource "aws_security_group" "db" {
+  depends_on = [terraform_data.legacy_retirement_guard]
+
   name   = "${var.name}-db"
   vpc_id = aws_vpc.this.id
   ingress {
@@ -130,11 +160,15 @@ resource "aws_security_group" "db" {
 
 # ---------------- database: Postgres 16, UTF8, encrypted, password managed by RDS ----------------
 resource "aws_db_subnet_group" "this" {
+  depends_on = [terraform_data.legacy_retirement_guard]
+
   name       = var.name
   subnet_ids = aws_subnet.private[*].id
 }
 
 resource "aws_db_instance" "this" {
+  depends_on = [terraform_data.legacy_retirement_guard]
+
   identifier                  = var.name
   engine                      = "postgres"
   engine_version              = "16"
@@ -156,30 +190,44 @@ resource "aws_db_instance" "this" {
 
 # ---------------- secrets ----------------
 resource "random_password" "export_key" {
+  depends_on = [terraform_data.legacy_retirement_guard]
+
   length  = 48
   special = false
 }
 
-resource "aws_secretsmanager_secret" "export_key" { name = "${var.name}/export-key" }
+resource "aws_secretsmanager_secret" "export_key" {
+  depends_on = [terraform_data.legacy_retirement_guard]
+
+  name = "${var.name}/export-key"
+}
 
 resource "aws_secretsmanager_secret_version" "export_key" {
+  depends_on = [terraform_data.legacy_retirement_guard]
+
   secret_id     = aws_secretsmanager_secret.export_key.id
   secret_string = random_password.export_key.result
 }
 
 # ---------------- container ----------------
 resource "aws_ecr_repository" "this" {
+  depends_on = [terraform_data.legacy_retirement_guard]
+
   name                 = var.name
   image_tag_mutability = "IMMUTABLE"
   image_scanning_configuration { scan_on_push = true }
 }
 
 resource "aws_cloudwatch_log_group" "this" {
+  depends_on = [terraform_data.legacy_retirement_guard]
+
   name              = "/ecs/${var.name}"
   retention_in_days = 90
 }
 
 resource "aws_iam_role" "execution" {
+  depends_on = [terraform_data.legacy_retirement_guard]
+
   name = "${var.name}-execution"
   assume_role_policy = jsonencode({
     Version   = "2012-10-17"
@@ -188,11 +236,15 @@ resource "aws_iam_role" "execution" {
 }
 
 resource "aws_iam_role_policy_attachment" "execution" {
+  depends_on = [terraform_data.legacy_retirement_guard]
+
   role       = aws_iam_role.execution.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
 resource "aws_iam_role_policy" "read_secrets" {
+  depends_on = [terraform_data.legacy_retirement_guard]
+
   name = "read-secrets"
   role = aws_iam_role.execution.id
   policy = jsonencode({
@@ -205,9 +257,15 @@ resource "aws_iam_role_policy" "read_secrets" {
   })
 }
 
-resource "aws_ecs_cluster" "this" { name = var.name }
+resource "aws_ecs_cluster" "this" {
+  depends_on = [terraform_data.legacy_retirement_guard]
+
+  name = var.name
+}
 
 resource "aws_ecs_task_definition" "this" {
+  depends_on = [terraform_data.legacy_retirement_guard]
+
   family                   = var.name
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
@@ -246,12 +304,16 @@ resource "aws_ecs_task_definition" "this" {
 
 # ---------------- load balancer (HTTPS only) ----------------
 resource "aws_lb" "this" {
+  depends_on = [terraform_data.legacy_retirement_guard]
+
   name            = var.name
   subnets         = aws_subnet.public[*].id
   security_groups = [aws_security_group.alb.id]
 }
 
 resource "aws_lb_target_group" "this" {
+  depends_on = [terraform_data.legacy_retirement_guard]
+
   name        = var.name
   port        = 8080
   protocol    = "HTTP"
@@ -264,6 +326,8 @@ resource "aws_lb_target_group" "this" {
 }
 
 resource "aws_lb_listener" "https" {
+  depends_on = [terraform_data.legacy_retirement_guard]
+
   load_balancer_arn = aws_lb.this.arn
   port              = 443
   protocol          = "HTTPS"
@@ -290,5 +354,5 @@ resource "aws_ecs_service" "this" {
     container_name   = "api"
     container_port   = 8080
   }
-  depends_on = [aws_lb_listener.https]
+  depends_on = [aws_lb_listener.https, terraform_data.legacy_retirement_guard]
 }

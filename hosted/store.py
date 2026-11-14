@@ -6,6 +6,7 @@ chained per tenant starting from "". Payloads live in a separate table so retent
 """
 import hashlib, json, os, sqlite3, threading
 from datetime import datetime, timedelta, timezone
+from .config import secret
 
 ROW_KEYS = ["run_id", "type", "at", "clock_source", "payload_json", "evidence_hash"]
 
@@ -247,8 +248,12 @@ def dsn_from_env(env=os.environ):
     """VERIFY_DATABASE_URL, or VERIFY_DB_HOST/_NAME/_USER/_PASSWORD[/_PORT/_SSLMODE] (how ECS injects RDS secrets)."""
     if env.get("VERIFY_DB_HOST"):
         from psycopg.conninfo import make_conninfo
-        return make_conninfo(host=env["VERIFY_DB_HOST"], port=env.get("VERIFY_DB_PORT", "5432"), dbname=env.get("VERIFY_DB_NAME", "verify"),
-                             user=env["VERIFY_DB_USER"], password=env["VERIFY_DB_PASSWORD"], sslmode=env.get("VERIFY_DB_SSLMODE", "require"))
+        options = dict(host=env["VERIFY_DB_HOST"], port=env.get("VERIFY_DB_PORT", "5432"), dbname=env.get("VERIFY_DB_NAME", "verify"),
+                       user=env["VERIFY_DB_USER"], password=secret("VERIFY_DB_PASSWORD", env),
+                       sslmode=env.get("VERIFY_DB_SSLMODE", "require"))
+        if env.get("VERIFY_DB_SSLROOTCERT"):
+            options["sslrootcert"] = env["VERIFY_DB_SSLROOTCERT"]
+        return make_conninfo(**options)
     return env.get("VERIFY_DATABASE_URL", "")
 
 def open_store():

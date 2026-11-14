@@ -1,0 +1,33 @@
+[Unit]
+Description=Verify hosted ledger
+After=network-online.target postgresql@16-main.service
+Wants=network-online.target
+Requires=postgresql@16-main.service
+# Created only after the runbook's data, recovery, TLS and single-writer gates.
+ConditionPathExists=/etc/verify/production-writer-enabled
+
+[Service]
+User=verify
+Group=verify
+WorkingDirectory=/opt/verify/current
+EnvironmentFile=/etc/verify/app.env
+LoadCredential=export-key:/etc/verify/secrets/export-key
+LoadCredential=db-password:/etc/verify/secrets/db-password
+Environment=VERIFY_EXPORT_KEY_FILE=%d/export-key
+Environment=VERIFY_DB_PASSWORD_FILE=%d/db-password
+ExecStart=/opt/verify/current/.venv/bin/python -m hosted.server serve 8080
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

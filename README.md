@@ -64,7 +64,7 @@ verify check-batch contracts/refund.full.stripe.json claims.jsonl --ledger verif
 
 ## Hosted ledger (optional)
 `hosted/` is an append-only, multi-tenant ledger API (SQLite or Postgres). Push a local ledger to it with
-`VERIFY_HOSTED_KEY=... verify push verify.db --to https://ledger.example.com`. Deployment to AWS us-east-2 is in `hosted/deploy/` (Terraform; not applied).
+`VERIFY_HOSTED_KEY=... verify push verify.db --to https://ledger.example.com`. The legacy AWS provisioning in `hosted/deploy/` is disabled for normal applies during the migration to the existing EC2 replacement; see that directory's README before any infrastructure work.
 
 ## Use from an agent
 `python -m verify.mcp_server` is an MCP server with `verify_check` and `verify_validate` (see `docs/MCP.md`). Framework examples are in `examples/`.

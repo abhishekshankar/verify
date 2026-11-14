@@ -115,10 +115,42 @@ Attach the bridge target group to a temporary HTTP health rule and observe it
 healthy before moving the HTTPS default action. An unattached target group stays
 unused; creating it alone does not prove readiness to receive HTTPS traffic.
 
-Move the ALB's HTTPS forwarding to the healthy bridge target group and wait until
-old direct requests have drained. Confirm source application behavior through the
-bridge. The bridge must remain SOURCE throughout rehearsal and backup testing.
-Enable Caddy and the bridge so their configuration survives restart.
+Use the standalone CloudShell `route_source_bridge.py inventory` command before
+changing HTTPS forwarding. It verifies the exact source task, image, interface,
+database, security-group rules and every interface allowed by those rules. It
+also verifies both new target groups, trusted target TLS, and a private target
+snapshot of the actual source login writers and bridge state.
+
+`handover` saves the prior registration, routing and ECS health grace as encrypted
+versioned S3 evidence before changing them. It extends only the existing task's
+health grace to cover its current age plus two hours, verifies that no deployment
+or task changed, and routes the bridge at weight 100 with the original source at
+weight 0 and target-group stickiness disabled. Then it explicitly deregisters the
+old ALB target. It preserves the original deregistration delay and returns while
+the SOURCE application continues running. `verify` is a separate, repeatable
+command: it reports PENDING until the full delay has elapsed, the old registration
+is absent, and the explicit AWS reason is `Target.NotRegistered`. Merely seeing
+`Target.NotInUse`, waiting an arbitrary interval, or finding missing CloudWatch
+metrics does not satisfy this check. Every current ALB address must then return
+the bridge's distinct health response through trusted HTTPS.
+
+AWS documents that updating the health grace does not start a deployment in the
+[UpdateService API reference](https://docs.aws.amazon.com/AmazonECS/latest/APIReference/API_UpdateService.html).
+The configured wait and target deregistration behavior follow the
+[ALB deregistration documentation](https://docs.aws.amazon.com/elasticloadbalancing/latest/application/edit-target-group-attributes.html#deregistration-delay).
+
+The evidence states that ALB completed its configured connection drain. It does
+not claim source-container socket visibility or guarantee completion of requests
+that exceed that configured drain. The source database SHARE/admission fence
+remains mandatory. The bridge stays SOURCE throughout these checks. Caddy and the
+bridge must remain enabled so their configuration survives restart.
+
+Before target activation, `rollback` first invalidates target routing readiness
+and keeps the healthy SOURCE bridge serving while it re-registers the old target.
+It waits for that target to become healthy before restoring the original HTTPS
+action, then restores the old ECS health grace last. It refuses to act if the
+target has been activated or the SOURCE proof is uncertain. After successful
+cutover, retire the old ECS service; do not use routing rollback to a stale source.
 
 ## Private coordinator configuration
 
@@ -155,7 +187,13 @@ The JSON fields are:
 }
 ```
 
-Set readiness fields only from observed evidence. These are technical checks,
+Populate readiness from observed evidence. The two external routing fields stay
+**false on disk**: `attest_source_route.py accept` pins the exact checked CloudShell
+report and its digest, then `execute` rechecks both report and attestation digests,
+their five-minute freshness, at least ten minutes of remaining ECS health grace,
+and a new read-only source writer snapshot. Only that locked process sets the two
+fields true in memory for the unchanged coordinator body. Stale evidence can never
+leave persistent true flags that remain usable later. These are technical checks,
 not requests for another user approval. The operator must account for tenant
 administration, retention tasks and any direct source connections as well as web
 requests. Authenticated GET requests also insert access-log rows, so they must
@@ -181,14 +219,24 @@ env -i PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
   --config /opt/verify-migration/cutover/coordinator.json
 ```
 
-The final command uses the same environment, replaces `rehearse` with `cutover`,
-and adds `--rehearsal` with the exact successful private report path. AWS backup
-access comes from this EC2 instance's scoped profile, not an AWS key in the shell.
+After CloudShell `verify` succeeds, download its exact versioned report to the
+private target directory and verify the independently supplied SHA256. Pin it with
+the deployed app interpreter and `-m hosted.lightsail.attest_source_route accept
+--routing-report <private-report> --sha256 <verified-sha256>`.
+
+The final command is `-m hosted.lightsail.attest_source_route execute --rehearsal
+<exact-successful-rehearsal-report>` using the same clean environment and deployed
+interpreter. This wrapper acquires the coordinator lock for the fresh evidence
+checks and the entire handover; do not use the direct coordinator CLI to replace
+that evidence boundary. AWS backup access comes from this EC2 instance's scoped
+profile, not an AWS key in the shell.
 
 ## Single-process cutover and rollback boundary
 
-Run `cutover.py cutover` locally on the target with the verified configuration and
-rehearsal record. Do not split its final sequence across manual browser commands.
+Run the attester's `execute` command locally with the pinned routing proof and
+successful rehearsal record. It invokes the exact coordinator version verified
+by the six real PostgreSQL/HTTP fixture cases. Do not split this final sequence
+across manual browser commands.
 
 1. Begin a 15-second wall budget before requesting DRAIN; the proxy queues every
    API call for at most 20 seconds. Wait for its in-flight requests to finish.
